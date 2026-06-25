@@ -52,6 +52,8 @@ interface Settings {
   eveningNudgeEnabled: boolean;
   eveningHour: number;
   tipsEnabled: boolean;
+  exercisesEnabled: boolean;
+  calmVisualsEnabled: boolean;
 }
 
 interface TimerSnapshot {
@@ -119,6 +121,13 @@ const EYE_TIPS = [
   "Book a yearly eye check-up.",
 ];
 
+const EYE_EXERCISES = [
+  "Follow the dot with your eyes — keep your head still.",
+  "Near → far: focus on your thumb, then something distant. Repeat.",
+  "Slow eye rolls: circle clockwise, then counter-clockwise.",
+  "Palming: rub palms warm, cup over closed eyes, breathe.",
+];
+
 const app = document.querySelector<HTMLDivElement>("#app")!;
 
 // Accessibility: reflected on <html> so it applies to every window/view.
@@ -136,11 +145,17 @@ async function renderBreak() {
   if (location.hash.includes("sound=1")) beep();
   const s = await invoke<Settings>("get_settings").catch(() => null);
 
+  const calmOn = s?.calmVisualsEnabled !== false;
   app.innerHTML = `
     <div class="break-screen" data-tauri-drag-region>
+      ${calmOn ? `<div class="break-bg"><span></span><span></span></div>` : ""}
       <p class="break-eyebrow">EyeBreak</p>
       <h1 class="break-title" id="break-title">Look ~20 feet away</h1>
       <p class="break-sub" id="break-sub">Relax your eyes — let your focus drift to the distance.</p>
+      <div class="break-exercise" id="break-exercise" hidden>
+        <div class="ex-stage"><span class="ex-dot"></span></div>
+        <p class="ex-label" id="ex-label"></p>
+      </div>
       <div class="break-count" id="break-count">00:20</div>
       <div class="break-actions">
         <button class="btn ghost" id="break-postpone">Postpone</button>
@@ -156,6 +171,27 @@ async function renderBreak() {
     document.querySelector<HTMLParagraphElement>("#break-tip")!.textContent =
       `💡 ${tip}`;
   }
+
+  // Guided eye-exercise (long breaks only)
+  const exEl = document.querySelector<HTMLDivElement>("#break-exercise")!;
+  const exLabel = document.querySelector<HTMLParagraphElement>("#ex-label")!;
+  let exTimer = 0;
+  let exIdx = 0;
+  const showExercise = (on: boolean) => {
+    if (on && exTimer === 0) {
+      exEl.hidden = false;
+      const step = () => {
+        exLabel.textContent = EYE_EXERCISES[exIdx % EYE_EXERCISES.length];
+        exIdx++;
+      };
+      step();
+      exTimer = window.setInterval(step, 7000);
+    } else if (!on && exTimer !== 0) {
+      exEl.hidden = true;
+      clearInterval(exTimer);
+      exTimer = 0;
+    }
+  };
 
   const titleEl = document.querySelector<HTMLHeadingElement>("#break-title")!;
   const subEl = document.querySelector<HTMLParagraphElement>("#break-sub")!;
@@ -185,6 +221,7 @@ async function renderBreak() {
       subEl.textContent =
         "Relax your eyes — let your focus drift to the distance.";
     }
+    showExercise(!!s?.exercisesEnabled && t.isLong);
     if (t.maxPostpones > 0) {
       postBtn.disabled = t.postponesUsed >= t.maxPostpones;
     }
@@ -707,6 +744,20 @@ async function showSettings() {
                 <span class="slider"></span>
               </span>
             </label>
+            <label class="toggle-row">
+              <span>Guided eye-exercises (long breaks)</span>
+              <span class="switch">
+                <input type="checkbox" id="f-exercises" />
+                <span class="slider"></span>
+              </span>
+            </label>
+            <label class="toggle-row">
+              <span>Calming break visuals</span>
+              <span class="switch">
+                <input type="checkbox" id="f-calm" />
+                <span class="slider"></span>
+              </span>
+            </label>
           </div>
         </section>
 
@@ -829,6 +880,8 @@ async function showSettings() {
   const fEvening = $<HTMLInputElement>("#f-evening");
   const fEveningHour = $<HTMLInputElement>("#f-eveninghour");
   const fTips = $<HTMLInputElement>("#f-tips");
+  const fExercises = $<HTMLInputElement>("#f-exercises");
+  const fCalm = $<HTMLInputElement>("#f-calm");
   const savedMsg = $<HTMLSpanElement>("#saved-msg");
 
   // animated custom dropdowns (readable, unlike the native popup)
@@ -896,6 +949,8 @@ async function showSettings() {
   fEvening.checked = c.eveningNudgeEnabled;
   fEveningHour.value = String(c.eveningHour);
   fTips.checked = c.tipsEnabled;
+  fExercises.checked = c.exercisesEnabled;
+  fCalm.checked = c.calmVisualsEnabled;
 
   $<HTMLButtonElement>("#btn-back").addEventListener("click", () =>
     showDashboard(),
@@ -942,6 +997,8 @@ async function showSettings() {
       eveningNudgeEnabled: fEvening.checked,
       eveningHour: Number(fEveningHour.value),
       tipsEnabled: fTips.checked,
+      exercisesEnabled: fExercises.checked,
+      calmVisualsEnabled: fCalm.checked,
     };
     mainSettings = await invoke<Settings>("set_settings", { settings: next });
     fWWidth.value = String(mainSettings.widgetWidth);

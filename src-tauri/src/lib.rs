@@ -144,6 +144,12 @@ struct Settings {
     /// Show a rotating eye-care tip on the break screen.
     #[serde(default = "d_true")]
     tips_enabled: bool,
+    /// Show a guided eye-exercise animation during long breaks.
+    #[serde(default)]
+    exercises_enabled: bool,
+    /// Calming animated visual on the break screen.
+    #[serde(default = "d_true")]
+    calm_visuals_enabled: bool,
 }
 
 fn d_hydration_interval() -> u64 {
@@ -247,6 +253,8 @@ impl Default for Settings {
             evening_nudge_enabled: false,
             evening_hour: d_evening_hour(),
             tips_enabled: true,
+            exercises_enabled: false,
+            calm_visuals_enabled: true,
         }
     }
 }
@@ -329,6 +337,8 @@ struct AppState {
     timer: Mutex<TimerState>,
     /// Registered global shortcuts as (accelerator string, action).
     shortcuts: Mutex<Vec<(String, ShortAction)>>,
+    /// Manual one-click "hide the widget" (e.g. while screen-recording).
+    widget_hidden_override: Mutex<bool>,
     /// Whether the user wants the main window shown. We track this ourselves
     /// instead of polling is_visible(), which is unreliable on some compositors.
     main_shown: Mutex<bool>,
@@ -520,10 +530,10 @@ fn update_widget_visibility(app: &AppHandle) {
         Some(w) => w,
         None => return,
     };
-    let mode = {
+    let (mode, suppress) = {
         let state = app.state::<AppState>();
-        let m = state.settings.lock().unwrap().widget_mode.clone();
-        m
+        let s = state.settings.lock().unwrap();
+        (s.widget_mode.clone(), s.suppress_on_fullscreen)
     };
     // Catch a native minimize (the title-bar button) and convert it to
     // hide-to-tray: a minimized window stays grouped with the app, so the WM
@@ -556,7 +566,15 @@ fn update_widget_visibility(app: &AppHandle) {
 
     let main_shown = *app.state::<AppState>().main_shown.lock().unwrap();
     let break_open = app.get_webview_window("break").is_some();
-    let want = mode != "off" && !break_open && (mode == "always" || !main_shown);
+    let mut want = mode != "off" && !break_open && (mode == "always" || !main_shown);
+    // Hide the widget over a fullscreen app (presentation / fullscreen call) so
+    // it doesn't show up on a shared/recorded screen.
+    if want && suppress && another_app_fullscreen() {
+        want = false;
+    }
+    if *app.state::<AppState>().widget_hidden_override.lock().unwrap() {
+        want = false;
+    }
     let is_visible = widget.is_visible().unwrap_or(false);
 
     if want {
@@ -627,6 +645,15 @@ fn do_toggle_pause(app: &AppHandle) {
         t.paused = !t.paused;
     }
     emit_tick(app);
+}
+
+fn do_toggle_widget(app: &AppHandle) {
+    {
+        let state = app.state::<AppState>();
+        let mut o = state.widget_hidden_override.lock().unwrap();
+        *o = !*o;
+    }
+    update_widget_visibility(app);
 }
 
 fn do_take_break(app: &AppHandle) {
@@ -1199,6 +1226,7 @@ pub fn run() {
                 main_shown: Mutex::new(true),
                 main_ready: Mutex::new(false),
                 shortcuts: Mutex::new(Vec::new()),
+                widget_hidden_override: Mutex::new(false),
             });
 
             // Tray icon + quick menu.
@@ -1206,12 +1234,15 @@ pub fn run() {
             let pause_i = MenuItemBuilder::with_id("pause", "Pause / Resume").build(app)?;
             let take_i = MenuItemBuilder::with_id("take", "Take a break now").build(app)?;
             let skip_i = MenuItemBuilder::with_id("skip", "Skip break").build(app)?;
+            let widget_i =
+                MenuItemBuilder::with_id("widget", "Hide / show widget").build(app)?;
             let quit_i = MenuItemBuilder::with_id("quit", "Quit").build(app)?;
             let menu = MenuBuilder::new(app)
                 .item(&open_i)
                 .item(&pause_i)
                 .item(&take_i)
                 .item(&skip_i)
+                .item(&widget_i)
                 .separator()
                 .item(&quit_i)
                 .build()?;
@@ -1226,6 +1257,7 @@ pub fn run() {
                     "pause" => do_toggle_pause(app),
                     "take" => do_take_break(app),
                     "skip" => do_skip(app),
+                    "widget" => do_toggle_widget(app),
                     "quit" => app.exit(0),
                     _ => {}
                 })
@@ -1250,6 +1282,10 @@ pub fn run() {
             // user drags it.
             apply_widget_config(&handle);
             if let Some(widget) = app.get_webview_window("widget") {
+                // Exclude the widget from screen capture (Windows/macOS; no-op
+                // on Linux/X11). Combined with fullscreen-suppression this keeps
+                // it off shared/recorded screens.
+                let _ = widget.set_content_protected(true);
                 let wh = handle.clone();
                 let w_scale = widget.clone();
                 widget.on_window_event(move |event| match event {

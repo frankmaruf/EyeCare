@@ -255,6 +255,8 @@ input[type="checkbox"] {
 /* ---------------- Break screen ---------------- */
 
 .break-screen {
+  position: relative;
+  overflow: hidden;
   min-height: 100vh;
   display: flex;
   flex-direction: column;
@@ -266,6 +268,120 @@ input[type="checkbox"] {
   background:
     radial-gradient(900px 500px at 50% 0%, #1f3a52 0%, transparent 65%),
     var(--bg);
+}
+
+.break-screen > :not(.break-bg) {
+  position: relative;
+  z-index: 1;
+}
+
+/* calming drifting orbs */
+.break-bg {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+}
+
+.break-bg span {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(60px);
+  opacity: 0.5;
+}
+
+.break-bg span:nth-child(1) {
+  width: 55vw;
+  height: 55vw;
+  top: -12%;
+  left: -10%;
+  background: radial-gradient(circle, #2bd0c8, transparent 70%);
+  animation: drift1 19s ease-in-out infinite alternate;
+}
+
+.break-bg span:nth-child(2) {
+  width: 48vw;
+  height: 48vw;
+  bottom: -16%;
+  right: -10%;
+  background: radial-gradient(circle, #4a7bd0, transparent 70%);
+  animation: drift2 23s ease-in-out infinite alternate;
+}
+
+@keyframes drift1 {
+  from {
+    transform: translate(0, 0);
+  }
+  to {
+    transform: translate(14vw, 11vh);
+  }
+}
+
+@keyframes drift2 {
+  from {
+    transform: translate(0, 0);
+  }
+  to {
+    transform: translate(-12vw, -9vh);
+  }
+}
+
+/* guided eye-exercise */
+.break-exercise {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  margin: 4px 0;
+}
+
+.break-exercise[hidden] {
+  display: none;
+}
+
+.ex-stage {
+  position: relative;
+  width: 260px;
+  height: 90px;
+}
+
+.ex-dot {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 18px;
+  height: 18px;
+  margin: -9px 0 0 -9px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 16px var(--accent);
+  animation: exMove 6s ease-in-out infinite;
+}
+
+@keyframes exMove {
+  0% {
+    transform: translate(-110px, 0) scale(1);
+  }
+  25% {
+    transform: translate(0, -34px) scale(1.3);
+  }
+  50% {
+    transform: translate(110px, 0) scale(1);
+  }
+  75% {
+    transform: translate(0, 34px) scale(0.8);
+  }
+  100% {
+    transform: translate(-110px, 0) scale(1);
+  }
+}
+
+.ex-label {
+  color: var(--text);
+  font-size: 0.95rem;
+  min-height: 1.3em;
+  max-width: 360px;
+  text-align: center;
 }
 
 .break-eyebrow {
