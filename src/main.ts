@@ -26,6 +26,15 @@ interface Settings {
   widgetOpacity: number;
   widgetX: number | null;
   widgetY: number | null;
+  autostart: boolean;
+  globalShortcutsEnabled: boolean;
+  scPause: string;
+  scSkip: string;
+  scTake: string;
+  scPostpone: string;
+  workHoursEnabled: boolean;
+  workStart: string;
+  workEnd: string;
 }
 
 interface TimerSnapshot {
@@ -520,6 +529,52 @@ async function showSettings() {
             </label>
           </div>
         </section>
+
+        <section class="card s-card">
+          <h2><span class="s-dot"></span> Startup</h2>
+          <div class="grid">
+            <label class="toggle-row">
+              <span>Launch EyeBreak at login</span>
+              <span class="switch">
+                <input type="checkbox" id="f-autostart" />
+                <span class="slider"></span>
+              </span>
+            </label>
+          </div>
+        </section>
+
+        <section class="card s-card">
+          <h2><span class="s-dot"></span> Global shortcuts</h2>
+          <div class="grid">
+            <label class="toggle-row">
+              <span>Enable system-wide hotkeys</span>
+              <span class="switch">
+                <input type="checkbox" id="f-gsc" />
+                <span class="slider"></span>
+              </span>
+            </label>
+            <label>Pause / resume<input type="text" id="f-scpause" spellcheck="false" /></label>
+            <label>Skip break<input type="text" id="f-scskip" spellcheck="false" /></label>
+            <label>Take a break now<input type="text" id="f-sctake" spellcheck="false" /></label>
+            <label>Postpone<input type="text" id="f-scpostpone" spellcheck="false" /></label>
+          </div>
+          <p class="hint">e.g. <code>CmdOrControl+Alt+P</code> — applied on Save.</p>
+        </section>
+
+        <section class="card s-card">
+          <h2><span class="s-dot"></span> Work hours</h2>
+          <div class="grid">
+            <label class="toggle-row">
+              <span>Only remind during work hours</span>
+              <span class="switch">
+                <input type="checkbox" id="f-wh" />
+                <span class="slider"></span>
+              </span>
+            </label>
+            <label>Start<input type="time" id="f-wstart" /></label>
+            <label>End<input type="time" id="f-wend" /></label>
+          </div>
+        </section>
       </div>
 
       <div class="save-row">
@@ -542,6 +597,15 @@ async function showSettings() {
   const fWWidth = $<HTMLInputElement>("#f-wwidth");
   const fWHeight = $<HTMLInputElement>("#f-wheight");
   const fWOpacity = $<HTMLInputElement>("#f-wopacity");
+  const fAutostart = $<HTMLInputElement>("#f-autostart");
+  const fGsc = $<HTMLInputElement>("#f-gsc");
+  const fScPause = $<HTMLInputElement>("#f-scpause");
+  const fScSkip = $<HTMLInputElement>("#f-scskip");
+  const fScTake = $<HTMLInputElement>("#f-sctake");
+  const fScPostpone = $<HTMLInputElement>("#f-scpostpone");
+  const fWh = $<HTMLInputElement>("#f-wh");
+  const fWStart = $<HTMLInputElement>("#f-wstart");
+  const fWEnd = $<HTMLInputElement>("#f-wend");
   const savedMsg = $<HTMLSpanElement>("#saved-msg");
 
   // animated custom dropdowns (readable, unlike the native popup)
@@ -583,6 +647,15 @@ async function showSettings() {
   fWWidth.value = String(c.widgetWidth);
   fWHeight.value = String(c.widgetHeight);
   fWOpacity.value = String(c.widgetOpacity);
+  fAutostart.checked = c.autostart;
+  fGsc.checked = c.globalShortcutsEnabled;
+  fScPause.value = c.scPause;
+  fScSkip.value = c.scSkip;
+  fScTake.value = c.scTake;
+  fScPostpone.value = c.scPostpone;
+  fWh.checked = c.workHoursEnabled;
+  fWStart.value = c.workStart;
+  fWEnd.value = c.workEnd;
 
   $<HTMLButtonElement>("#btn-back").addEventListener("click", () =>
     showDashboard(),
@@ -603,6 +676,15 @@ async function showSettings() {
       widgetWidth: Number(fWWidth.value),
       widgetHeight: Number(fWHeight.value),
       widgetOpacity: Number(fWOpacity.value),
+      autostart: fAutostart.checked,
+      globalShortcutsEnabled: fGsc.checked,
+      scPause: fScPause.value.trim(),
+      scSkip: fScSkip.value.trim(),
+      scTake: fScTake.value.trim(),
+      scPostpone: fScPostpone.value.trim(),
+      workHoursEnabled: fWh.checked,
+      workStart: fWStart.value || "09:00",
+      workEnd: fWEnd.value || "17:00",
     };
     mainSettings = await invoke<Settings>("set_settings", { settings: next });
     fWWidth.value = String(mainSettings.widgetWidth);

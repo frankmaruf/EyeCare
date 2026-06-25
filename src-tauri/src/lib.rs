@@ -9,6 +9,7 @@
 use std::sync::Mutex;
 use std::time::Duration;
 
+use chrono::Timelike;
 use serde::{Deserialize, Serialize};
 use tauri::{
     menu::{MenuBuilder, MenuItemBuilder},
@@ -16,6 +17,11 @@ use tauri::{
     AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder, WindowEvent,
 };
 use tauri_plugin_notification::NotificationExt;
+
+#[cfg(desktop)]
+use tauri_plugin_autostart::ManagerExt;
+#[cfg(desktop)]
+use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 
 // ---------------------------------------------------------------------------
 // Settings (persisted as JSON in the app config dir)
@@ -60,6 +66,52 @@ struct Settings {
     widget_x: Option<f64>,
     #[serde(default)]
     widget_y: Option<f64>,
+
+    // --- Startup / shortcuts / work hours (§4.8, §4.9, §9.9) ---
+    /// Launch at login.
+    #[serde(default)]
+    autostart: bool,
+    /// Master switch for system-wide hotkeys.
+    #[serde(default = "d_true")]
+    global_shortcuts_enabled: bool,
+    #[serde(default = "d_sc_pause")]
+    sc_pause: String,
+    #[serde(default = "d_sc_skip")]
+    sc_skip: String,
+    #[serde(default = "d_sc_take")]
+    sc_take: String,
+    #[serde(default = "d_sc_postpone")]
+    sc_postpone: String,
+    /// Only run reminders during the work-hours window.
+    #[serde(default)]
+    work_hours_enabled: bool,
+    /// "HH:MM" local time.
+    #[serde(default = "d_work_start")]
+    work_start: String,
+    #[serde(default = "d_work_end")]
+    work_end: String,
+}
+
+fn d_true() -> bool {
+    true
+}
+fn d_sc_pause() -> String {
+    "CmdOrControl+Alt+P".into()
+}
+fn d_sc_skip() -> String {
+    "CmdOrControl+Alt+S".into()
+}
+fn d_sc_take() -> String {
+    "CmdOrControl+Alt+B".into()
+}
+fn d_sc_postpone() -> String {
+    "CmdOrControl+Alt+Z".into()
+}
+fn d_work_start() -> String {
+    "09:00".into()
+}
+fn d_work_end() -> String {
+    "17:00".into()
 }
 
 fn d_widget_mode() -> String {
@@ -92,6 +144,15 @@ impl Default for Settings {
             widget_opacity: d_widget_opacity(),
             widget_x: None,
             widget_y: None,
+            autostart: false,
+            global_shortcuts_enabled: true,
+            sc_pause: d_sc_pause(),
+            sc_skip: d_sc_skip(),
+            sc_take: d_sc_take(),
+            sc_postpone: d_sc_postpone(),
+            work_hours_enabled: false,
+            work_start: d_work_start(),
+            work_end: d_work_end(),
         }
     }
 }
@@ -141,9 +202,19 @@ struct TimerState {
     warned: bool,
 }
 
+#[derive(Clone, Copy)]
+enum ShortAction {
+    Pause,
+    Skip,
+    Take,
+    Postpone,
+}
+
 struct AppState {
     settings: Mutex<Settings>,
     timer: Mutex<TimerState>,
+    /// Registered global shortcuts as (accelerator string, action).
+    shortcuts: Mutex<Vec<(String, ShortAction)>>,
     /// Whether the user wants the main window shown. We track this ourselves
     /// instead of polling is_visible(), which is unreliable on some compositors.
     main_shown: Mutex<bool>,
@@ -440,6 +511,99 @@ fn do_skip(app: &AppHandle) {
     emit_tick(app);
 }
 
+/// Delay the break by the snooze duration. Returns false if the postpone cap
+/// has been reached.
+fn do_postpone(app: &AppHandle) -> bool {
+    let allowed = {
+        let state = app.state::<AppState>();
+        let s = state.settings.lock().unwrap().clone();
+        let mut t = state.timer.lock().unwrap();
+        let unlimited = s.max_postpones == 0;
+        if unlimited || t.postpones_used < s.max_postpones {
+            t.postpones_used += 1;
+            t.phase = Phase::Working;
+            t.remaining = s.snooze_secs;
+            t.warned = false;
+            true
+        } else {
+            false
+        }
+    };
+    if allowed {
+        close_break_window(app);
+    }
+    emit_tick(app);
+    allowed
+}
+
+/// Whether reminders should run right now (always true unless work-hours is on
+/// and the current local time is outside the configured window).
+fn within_work_hours(s: &Settings) -> bool {
+    if !s.work_hours_enabled {
+        return true;
+    }
+    let now = chrono::Local::now();
+    let now_min = now.hour() * 60 + now.minute();
+    let parse = |t: &str| -> Option<u32> {
+        let mut parts = t.split(':');
+        let h: u32 = parts.next()?.trim().parse().ok()?;
+        let m: u32 = parts.next()?.trim().parse().ok()?;
+        Some(h * 60 + m)
+    };
+    let start = parse(&s.work_start).unwrap_or(0);
+    let end = parse(&s.work_end).unwrap_or(24 * 60);
+    if start <= end {
+        now_min >= start && now_min < end
+    } else {
+        // window spans midnight
+        now_min >= start || now_min < end
+    }
+}
+
+/// Enable/disable launch-at-login to match the setting.
+#[cfg(desktop)]
+fn apply_autostart(app: &AppHandle) {
+    let want = app.state::<AppState>().settings.lock().unwrap().autostart;
+    let mgr = app.autolaunch();
+    let is = mgr.is_enabled().unwrap_or(false);
+    if want && !is {
+        let _ = mgr.enable();
+    } else if !want && is {
+        let _ = mgr.disable();
+    }
+}
+
+/// (Re)register the global hotkeys from the current settings.
+#[cfg(desktop)]
+fn register_shortcuts(app: &AppHandle) {
+    let gs = app.global_shortcut();
+    let _ = gs.unregister_all();
+
+    let state = app.state::<AppState>();
+    let s = state.settings.lock().unwrap().clone();
+    let mut map = state.shortcuts.lock().unwrap();
+    map.clear();
+    if !s.global_shortcuts_enabled {
+        return;
+    }
+    for (accel, action) in [
+        (s.sc_pause.clone(), ShortAction::Pause),
+        (s.sc_skip.clone(), ShortAction::Skip),
+        (s.sc_take.clone(), ShortAction::Take),
+        (s.sc_postpone.clone(), ShortAction::Postpone),
+    ] {
+        let accel = accel.trim().to_string();
+        if accel.is_empty() {
+            continue;
+        }
+        if let Ok(sc) = accel.parse::<Shortcut>() {
+            if gs.register(sc).is_ok() {
+                map.push((accel, action));
+            }
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Commands (callable from the webview)
 // ---------------------------------------------------------------------------
@@ -464,6 +628,11 @@ fn set_settings(app: AppHandle, state: State<AppState>, settings: Settings) -> S
         }
     }
     apply_widget_config(&app);
+    #[cfg(desktop)]
+    {
+        apply_autostart(&app);
+        register_shortcuts(&app);
+    }
     emit_tick(&app);
     cleaned
 }
@@ -496,26 +665,8 @@ fn timer_take_break(app: AppHandle) {
 /// Delay the break by the snooze duration. Returns false if the postpone cap
 /// has been reached (the break is then enforced).
 #[tauri::command]
-fn timer_postpone(app: AppHandle, state: State<AppState>) -> bool {
-    let allowed = {
-        let s = state.settings.lock().unwrap().clone();
-        let mut t = state.timer.lock().unwrap();
-        let unlimited = s.max_postpones == 0;
-        if unlimited || t.postpones_used < s.max_postpones {
-            t.postpones_used += 1;
-            t.phase = Phase::Working;
-            t.remaining = s.snooze_secs;
-            t.warned = false;
-            true
-        } else {
-            false
-        }
-    };
-    if allowed {
-        close_break_window(&app);
-    }
-    emit_tick(&app);
-    allowed
+fn timer_postpone(app: AppHandle) -> bool {
+    do_postpone(&app)
 }
 
 #[tauri::command]
@@ -545,7 +696,8 @@ fn run_timer(app: AppHandle) {
                 let s = state.settings.lock().unwrap().clone();
                 let mut t = state.timer.lock().unwrap();
 
-                if t.paused {
+                // Freeze the countdown while paused or outside work hours.
+                if t.paused || !within_work_hours(&s) {
                     Tick::None
                 } else {
                     let mut action = Tick::None;
@@ -635,9 +787,43 @@ pub fn run() {
     // running copy instead of starting a new one.
     #[cfg(desktop)]
     {
-        builder = builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
-            show_main_window(app);
-        }));
+        builder = builder
+            .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+                show_main_window(app);
+            }))
+            .plugin(tauri_plugin_autostart::init(
+                tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+                None,
+            ))
+            .plugin(
+                tauri_plugin_global_shortcut::Builder::new()
+                    .with_handler(|app, shortcut, event| {
+                        if event.state() != ShortcutState::Pressed {
+                            return;
+                        }
+                        let action = {
+                            let state = app.state::<AppState>();
+                            let map = state.shortcuts.lock().unwrap();
+                            map.iter().find_map(|(accel, act)| {
+                                accel
+                                    .parse::<Shortcut>()
+                                    .ok()
+                                    .filter(|sc| sc == shortcut)
+                                    .map(|_| *act)
+                            })
+                        };
+                        match action {
+                            Some(ShortAction::Pause) => do_toggle_pause(app),
+                            Some(ShortAction::Skip) => do_skip(app),
+                            Some(ShortAction::Take) => do_take_break(app),
+                            Some(ShortAction::Postpone) => {
+                                let _ = do_postpone(app);
+                            }
+                            None => {}
+                        }
+                    })
+                    .build(),
+            );
     }
 
     builder
@@ -660,6 +846,7 @@ pub fn run() {
                 timer: Mutex::new(timer),
                 main_shown: Mutex::new(true),
                 main_ready: Mutex::new(false),
+                shortcuts: Mutex::new(Vec::new()),
             });
 
             // Tray icon + quick menu.
@@ -739,6 +926,13 @@ pub fn run() {
                 });
             }
             update_widget_visibility(&handle);
+
+            // Apply startup + global-hotkey settings.
+            #[cfg(desktop)]
+            {
+                apply_autostart(&handle);
+                register_shortcuts(&handle);
+            }
 
             // Start the authoritative 1-second timer.
             run_timer(handle);

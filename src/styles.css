@@ -656,6 +656,29 @@ body:has(.widget) {
 .s-card:nth-child(3) {
   animation-delay: 0.21s;
 }
+.s-card:nth-child(4) {
+  animation-delay: 0.29s;
+}
+.s-card:nth-child(5) {
+  animation-delay: 0.37s;
+}
+.s-card:nth-child(6) {
+  animation-delay: 0.45s;
+}
+
+.hint {
+  margin: 12px 0 0;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.hint code {
+  background: #1b2a44;
+  padding: 1px 6px;
+  border-radius: 5px;
+  color: #cdd9ee;
+  font-size: 0.82em;
+}
 
 @keyframes cardIn {
   from {
