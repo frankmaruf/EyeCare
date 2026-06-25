@@ -738,18 +738,19 @@ async function showSettings() {
           <h2><span class="s-dot"></span> Long breaks</h2>
           <div class="grid">
             <label class="toggle-row">
-              <span>Add a longer break periodically</span>
+              <span>Make every Nth break a longer stand-up break</span>
               <span class="switch">
                 <input type="checkbox" id="f-long" />
                 <span class="slider"></span>
               </span>
             </label>
-            <label>Every <span class="unit">(breaks)</span>
+            <label>Long break every <span class="unit">(breaks)</span>
               <input type="number" id="f-longevery" min="1" max="20" />
             </label>
-            <label>Long length <span class="unit">(min)</span>
+            <label>Long break length <span class="unit">(minutes)</span>
               <input type="number" id="f-longlen" min="1" max="60" />
             </label>
+            <p class="hint span-row" id="long-hint"></p>
           </div>
         </section>
 
@@ -1098,6 +1099,22 @@ async function showSettings() {
     });
     dp.appendChild(chip);
   });
+
+  // live "long break ≈ once an hour" hint
+  const longHint = $<HTMLParagraphElement>("#long-hint");
+  const updateLongHint = () => {
+    const workMin = Math.max(1, Number(fWork.value) || 20);
+    const every = Math.max(1, Number(fLongEvery.value) || 3);
+    const len = Math.max(1, Number(fLongLen.value) || 5);
+    const gap = workMin * every; // minutes between long breaks
+    const gapStr =
+      gap >= 60 ? `~${(gap / 60).toFixed(gap % 60 === 0 ? 0 : 1)} h` : `~${gap} min`;
+    longHint.textContent = `→ a ${len}-min long break about every ${gapStr} (every ${every}${every === 1 ? " break" : " breaks"}). The other breaks stay short.`;
+  };
+  updateLongHint();
+  [fWork, fLongEvery, fLongLen].forEach((el) =>
+    el.addEventListener("input", updateLongHint),
+  );
 
   $<HTMLButtonElement>("#btn-back").addEventListener("click", () =>
     showDashboard(),
