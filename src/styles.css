@@ -322,9 +322,11 @@ input[type="checkbox"] {
 
 /* ---------------- Floating widget ---------------- */
 
-/* the widget window is transparent so the rounded corners show through */
+/* the widget window is transparent so the rounded corners show through;
+   never show scrollbars or let content spill during resize */
 body:has(.widget) {
   background: transparent;
+  overflow: hidden;
 }
 
 .widget {
@@ -334,34 +336,42 @@ body:has(.widget) {
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 7px 7px 6px;
-  gap: 5px;
+  padding: clamp(5px, 4.5cqmin, 13px);
+  gap: clamp(3px, 3cqmin, 9px);
   background: rgba(14, 23, 38, var(--w-fill, 0.95));
   border: 1px solid #2b3a57;
   -webkit-user-select: none;
   user-select: none;
   cursor: grab;
+  /* everything inside scales with the widget size so resizing never
+     breaks the layout */
+  container-type: size;
 }
 
 /* the dial fills the space above the action bar; the ring stays square
-   and centered within it regardless of the bar height */
+   and centered within it regardless of the bar height. It is its own size
+   container so the time font can track the actual circle diameter. */
 .w-dial {
   position: relative;
   flex: 1 1 auto;
   width: 100%;
   min-height: 0;
-  display: grid;
 }
 
 .w-dial > .w-ring {
-  grid-area: 1 / 1;
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
 }
 
+/* absolute-centre the time on the dial (= the ring centre) so the two are
+   always concentric */
 .w-dial > .w-center {
-  grid-area: 1 / 1;
-  place-self: center;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
 }
 
 .widget:active {
@@ -403,7 +413,11 @@ body:has(.widget) {
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   color: var(--text);
-  font-size: clamp(12px, 12vmin, 24px);
+  /* JS sizes this to the actual circle (see fitTime); this is only a
+     pre-script fallback */
+  font-size: 18px;
+  line-height: 1;
+  white-space: nowrap;
 }
 
 .widget[data-phase="break"] .w-time,
@@ -414,14 +428,13 @@ body:has(.widget) {
 
 .w-restore {
   position: absolute;
-  top: 6px;
-  right: 6px;
-  width: 22px;
-  height: 22px;
+  top: clamp(4px, 3cqmin, 9px);
+  right: clamp(4px, 3cqmin, 9px);
+  width: clamp(18px, 13cqmin, 28px);
+  height: clamp(18px, 13cqmin, 28px);
   padding: 0;
   display: grid;
   place-items: center;
-  font-size: 0.8rem;
   line-height: 1;
   border: none;
   border-radius: 6px;
@@ -431,7 +444,7 @@ body:has(.widget) {
   transition: opacity 0.15s;
 }
 
-.widget:hover .w-restore {
+.widget.hovered .w-restore {
   opacity: 1;
 }
 
@@ -441,47 +454,102 @@ body:has(.widget) {
 }
 
 .w-restore svg {
-  width: 12px;
-  height: 12px;
+  width: clamp(10px, 7cqmin, 15px);
+  height: clamp(10px, 7cqmin, 15px);
   display: block;
 }
 
 /* widget quick-action buttons (pause / take break / skip) */
+/* hidden by default — the widget shows just the ring + time; the buttons
+   float in over the lower part of the ring only on hover */
 .w-actions {
-  flex: 0 0 auto;
-  width: 100%;
+  position: absolute;
+  left: 50%;
+  bottom: clamp(6px, 6cqmin, 18px);
+  transform: translateX(-50%) translateY(6px);
   display: flex;
   justify-content: center;
-  gap: 8px;
-  padding-top: 6px;
-  border-top: 1px solid rgba(255, 255, 255, 0.07);
+  gap: clamp(6px, 5cqmin, 13px);
+  z-index: 4;
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    opacity 0.18s ease,
+    transform 0.18s ease;
+}
+
+.widget.hovered .w-actions {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+  pointer-events: auto;
 }
 
 .w-actions button {
-  width: 28px;
-  height: 24px;
+  width: clamp(26px, 17cqmin, 40px);
+  height: clamp(26px, 17cqmin, 40px);
   padding: 0;
   display: grid;
   place-items: center;
-  border: none;
-  border-radius: 7px;
-  background: rgba(255, 255, 255, 0.07);
-  color: #c4d0e3;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 50%;
+  background: linear-gradient(
+    150deg,
+    rgba(255, 255, 255, 0.13),
+    rgba(255, 255, 255, 0.03)
+  );
+  color: #e2e9f5;
   cursor: pointer;
+  box-shadow:
+    0 2px 6px rgba(0, 0, 0, 0.28),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
   transition:
-    background 0.15s,
-    color 0.15s;
+    transform 0.14s ease,
+    background 0.16s ease,
+    box-shadow 0.16s ease,
+    border-color 0.16s ease;
 }
 
 .w-actions button:hover {
-  background: rgba(255, 255, 255, 0.18);
+  transform: translateY(-1.5px);
+  background: linear-gradient(
+    150deg,
+    rgba(255, 255, 255, 0.24),
+    rgba(255, 255, 255, 0.09)
+  );
+  border-color: rgba(255, 255, 255, 0.2);
+  box-shadow:
+    0 6px 14px rgba(0, 0, 0, 0.34),
+    inset 0 1px 0 rgba(255, 255, 255, 0.16);
   color: #fff;
 }
 
+.w-actions button:active {
+  transform: translateY(0) scale(0.92);
+}
+
+/* primary action — take a break now */
+.w-actions #w-take {
+  background: linear-gradient(150deg, #5ad6d0, #34a8a2);
+  border-color: rgba(255, 255, 255, 0.22);
+  color: #07151b;
+  box-shadow:
+    0 3px 10px rgba(76, 198, 192, 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.3);
+}
+
+.w-actions #w-take:hover {
+  background: linear-gradient(150deg, #6fe0da, #3cb8b1);
+  box-shadow: 0 6px 16px rgba(76, 198, 192, 0.5);
+}
+
 .w-actions svg {
-  width: 14px;
-  height: 14px;
+  width: clamp(12px, 9cqmin, 19px);
+  height: clamp(12px, 9cqmin, 19px);
   display: block;
+}
+
+.w-ticks circle {
+  fill: rgba(255, 255, 255, 0.22);
 }
 
 /* resize grip (bottom-right corner) */
@@ -489,11 +557,11 @@ body:has(.widget) {
   position: absolute;
   right: 1px;
   bottom: 1px;
-  width: 22px;
-  height: 22px;
+  width: clamp(16px, 12cqmin, 26px);
+  height: clamp(16px, 12cqmin, 26px);
   cursor: nwse-resize;
   z-index: 5;
-  opacity: 0.45;
+  opacity: 0;
   transition: opacity 0.15s;
   background: linear-gradient(
     135deg,
@@ -505,7 +573,7 @@ body:has(.widget) {
   );
 }
 
-.widget:hover .w-resize {
+.widget.hovered .w-resize {
   opacity: 0.95;
 }
 
@@ -542,4 +610,247 @@ body:has(.widget) {
 
 .settings-page .dash-head h1 {
   font-size: 1.4rem;
+}
+
+.icon-btn svg {
+  width: 18px;
+  height: 18px;
+  display: block;
+}
+
+/* ---------------- Settings page (animated) ---------------- */
+
+.settings-page,
+.dash:not(.settings-page) {
+  animation: viewIn 0.28s ease both;
+}
+
+@keyframes viewIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.settings-scroll {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.s-card {
+  opacity: 0;
+  animation: cardIn 0.45s cubic-bezier(0.2, 0.7, 0.25, 1) forwards;
+}
+
+.s-card:nth-child(1) {
+  animation-delay: 0.05s;
+}
+.s-card:nth-child(2) {
+  animation-delay: 0.13s;
+}
+.s-card:nth-child(3) {
+  animation-delay: 0.21s;
+}
+
+@keyframes cardIn {
+  from {
+    opacity: 0;
+    transform: translateY(16px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.s-card h2 {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.s-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 10px rgba(76, 198, 192, 0.6);
+}
+
+/* ---------------- Custom dropdown ---------------- */
+
+.cselect {
+  position: relative;
+}
+
+.cselect-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-family: inherit;
+  font-size: 0.95rem;
+  color: var(--text);
+  background: var(--panel-solid);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 9px 11px;
+  cursor: pointer;
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s;
+}
+
+.cselect-btn:hover {
+  border-color: #34466a;
+}
+
+.cselect.open .cselect-btn {
+  border-color: var(--accent-2);
+  box-shadow: 0 0 0 3px rgba(91, 141, 239, 0.18);
+}
+
+.cselect-chev {
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+  transition: transform 0.2s ease;
+}
+
+.cselect-chev svg {
+  width: 16px;
+  height: 16px;
+}
+
+.cselect.open .cselect-chev {
+  transform: rotate(180deg);
+}
+
+.cselect-list {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  margin: 0;
+  padding: 5px;
+  list-style: none;
+  background: #16223a;
+  border: 1px solid #2c3c5c;
+  border-radius: 10px;
+  box-shadow: 0 14px 32px rgba(0, 0, 0, 0.45);
+  z-index: 50;
+  opacity: 0;
+  transform: translateY(-8px) scale(0.97);
+  transform-origin: top center;
+  pointer-events: none;
+  transition:
+    opacity 0.16s ease,
+    transform 0.16s ease;
+}
+
+.cselect.open .cselect-list {
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
+}
+
+.cselect-opt {
+  padding: 9px 10px;
+  border-radius: 7px;
+  font-size: 0.92rem;
+  color: #d6deec;
+  cursor: pointer;
+  transition:
+    background 0.12s,
+    color 0.12s;
+}
+
+.cselect-opt:hover {
+  background: rgba(91, 141, 239, 0.18);
+  color: #fff;
+}
+
+.cselect-opt.sel {
+  background: rgba(76, 198, 192, 0.16);
+  color: var(--accent);
+}
+
+/* ---------------- Toggle switch ---------------- */
+
+.toggle-row {
+  grid-column: 1 / -1;
+  flex-direction: row !important;
+  align-items: center !important;
+  justify-content: space-between;
+  color: var(--text) !important;
+}
+
+.switch {
+  position: relative;
+  width: 44px;
+  height: 24px;
+  flex: 0 0 auto;
+}
+
+.switch input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.slider {
+  position: absolute;
+  inset: 0;
+  background: #2a3a57;
+  border-radius: 999px;
+  transition: background 0.2s;
+}
+
+.slider::before {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 18px;
+  height: 18px;
+  background: #cdd7e8;
+  border-radius: 50%;
+  transition:
+    transform 0.22s cubic-bezier(0.2, 0.8, 0.2, 1),
+    background 0.2s;
+}
+
+.switch input:checked + .slider {
+  background: var(--accent);
+}
+
+.switch input:checked + .slider::before {
+  transform: translateX(20px);
+  background: #0e1726;
+}
+
+/* saved confirmation */
+.saved.show {
+  animation: savedPop 0.3s ease;
+}
+
+@keyframes savedPop {
+  0% {
+    opacity: 0;
+    transform: translateX(-6px);
+  }
+  100% {
+    opacity: 1;
+    transform: none;
+  }
 }

@@ -136,6 +136,15 @@ function renderBreak() {
 
 const WIDGET_CIRC = 2 * Math.PI * 44;
 
+// 12 reference dots around the ring (clock-style) so the depleting arc reads
+// clearly as a countdown.
+const WIDGET_TICKS = Array.from({ length: 12 }, (_, i) => {
+  const a = (i * 30 * Math.PI) / 180;
+  const x = (50 + 37 * Math.sin(a)).toFixed(2);
+  const y = (50 - 37 * Math.cos(a)).toFixed(2);
+  return `<circle cx="${x}" cy="${y}" r="1.15"></circle>`;
+}).join("");
+
 // Monochrome inline icons (inherit currentColor) so the action bar looks
 // consistent — no clashing colour emoji.
 const ICON_PAUSE = `<svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1.2"/><rect x="14" y="5" width="4" height="14" rx="1.2"/></svg>`;
@@ -143,6 +152,9 @@ const ICON_PLAY = `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 4.5l
 const ICON_EYE = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>`;
 const ICON_SKIP = `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M5 4.5l10 7.5-10 7.5z"/><rect x="16.5" y="5" width="3" height="14" rx="1.2"/></svg>`;
 const ICON_EXPAND = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h6v6"/><path d="M10 20H4v-6"/><path d="M20 4l-8 8"/><path d="M4 20l8-8"/></svg>`;
+const ICON_GEAR = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`;
+const ICON_BACK = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>`;
+const ICON_CHEVRON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>`;
 
 function applyWidgetStyle(s: Settings) {
   const card = document.querySelector<HTMLDivElement>(".widget");
@@ -165,6 +177,7 @@ async function renderWidget() {
       <div class="w-dial">
         <svg class="w-ring" viewBox="0 0 100 100">
           <circle class="w-ring-bg" cx="50" cy="50" r="44"></circle>
+          <g class="w-ticks">${WIDGET_TICKS}</g>
           <circle class="w-ring-fg" cx="50" cy="50" r="44" transform="rotate(-90 50 50)"></circle>
         </svg>
         <div class="w-center">
@@ -184,9 +197,39 @@ async function renderWidget() {
   applyWidgetStyle(s);
 
   const card = document.querySelector<HTMLDivElement>(".widget")!;
+  const dial = document.querySelector<HTMLDivElement>(".w-dial")!;
   const ringFg = document.querySelector<SVGCircleElement>(".w-ring-fg")!;
   const timeEl = document.querySelector<HTMLDivElement>("#w-time")!;
   const pauseBtn = document.querySelector<HTMLButtonElement>("#w-pause")!;
+
+  // Size the time to the actual circle (≈ the dial's smaller side) so it always
+  // fits inside the ring at any widget size or aspect ratio.
+  const fitTime = () => {
+    const r = dial.getBoundingClientRect();
+    const d = Math.min(r.width, r.height);
+    if (d > 0) timeEl.style.fontSize = `${Math.max(8, d * 0.27)}px`;
+  };
+  new ResizeObserver(fitTime).observe(dial);
+  fitTime();
+
+  // Reveal the controls on mouse activity, auto-hide ~2s after it stops.
+  // Frameless webviews don't reliably fire pointerleave, so a CSS :hover would
+  // get stuck "on"; drive it from JS with a timeout instead.
+  let hideTimer = 0;
+  const poke = () => {
+    card.classList.add("hovered");
+    clearTimeout(hideTimer);
+    hideTimer = window.setTimeout(
+      () => card.classList.remove("hovered"),
+      2200,
+    );
+  };
+  card.addEventListener("pointermove", poke);
+  card.addEventListener("pointerdown", poke);
+  card.addEventListener("pointerleave", () => {
+    clearTimeout(hideTimer);
+    card.classList.remove("hovered");
+  });
 
   // Drag the frameless window: data-tauri-drag-region doesn't fire reliably
   // when the click lands on the SVG circles, so start the drag from JS.
@@ -201,8 +244,9 @@ async function renderWidget() {
     }
   });
 
-  // Resize grip (bottom-right corner): drive the size from JS so it works the
-  // same on every compositor (native WM resize is unreliable on XWayland).
+  // Resize grip (bottom-right). KWin refuses the WM's native resize for this
+  // borderless always-on-top window, so drive setSize from JS (needs the
+  // allow-set-size capability). Throttled to one resize per frame so it's smooth.
   const grip = document.querySelector<HTMLDivElement>("#w-resize")!;
   grip.addEventListener("pointerdown", (e) => {
     e.preventDefault();
@@ -214,16 +258,25 @@ async function renderWidget() {
     const startH = window.innerHeight;
     grip.setPointerCapture(e.pointerId);
 
-    const clamp = (v: number) => Math.max(80, Math.min(480, Math.round(v)));
+    const clamp = (v: number) => Math.max(120, Math.min(480, Math.round(v)));
+    let raf = 0;
+    let tw = startW;
+    let th = startH;
+    const apply = () => {
+      raf = 0;
+      win.setSize(new LogicalSize(tw, th));
+    };
     const onMove = (ev: PointerEvent) => {
-      const w = clamp(startW + (ev.screenX - startX));
-      const h = clamp(startH + (ev.screenY - startY));
-      win.setSize(new LogicalSize(w, h));
+      tw = clamp(startW + (ev.screenX - startX));
+      th = clamp(startH + (ev.screenY - startY));
+      if (!raf) raf = requestAnimationFrame(apply);
     };
     const onUp = () => {
       grip.releasePointerCapture(e.pointerId);
       grip.removeEventListener("pointermove", onMove);
       grip.removeEventListener("pointerup", onUp);
+      if (raf) cancelAnimationFrame(raf);
+      win.setSize(new LogicalSize(tw, th));
     };
     grip.addEventListener("pointermove", onMove);
     grip.addEventListener("pointerup", onUp);
@@ -284,7 +337,7 @@ async function showDashboard() {
           <h1>EyeBreak</h1>
           <span class="tag" id="phase-tag">working</span>
         </div>
-        <button class="icon-btn" id="btn-settings" title="Settings">⚙</button>
+        <button class="icon-btn" id="btn-settings" title="Settings">${ICON_GEAR}</button>
       </header>
 
       <section class="ring-wrap">
@@ -353,82 +406,121 @@ async function showDashboard() {
   );
 }
 
+// A styled, animated dropdown replacing the native <select>, whose option
+// popup is drawn by GTK on Linux and ignores our CSS (unreadable colours).
+interface Opt {
+  value: string;
+  label: string;
+}
+
+function customSelect(mount: HTMLElement, options: Opt[], initial: string) {
+  let current = initial;
+  mount.classList.add("cselect");
+  mount.innerHTML = `
+    <button type="button" class="cselect-btn">
+      <span class="cselect-value"></span>
+      <span class="cselect-chev">${ICON_CHEVRON}</span>
+    </button>
+    <ul class="cselect-list" role="listbox"></ul>
+  `;
+  const valueEl = mount.querySelector<HTMLSpanElement>(".cselect-value")!;
+  const list = mount.querySelector<HTMLUListElement>(".cselect-list")!;
+
+  const render = () => {
+    valueEl.textContent = options.find((o) => o.value === current)?.label ?? "";
+    list.innerHTML = options
+      .map(
+        (o) =>
+          `<li class="cselect-opt${o.value === current ? " sel" : ""}" data-v="${o.value}" role="option">${o.label}</li>`,
+      )
+      .join("");
+  };
+  render();
+
+  mount
+    .querySelector<HTMLButtonElement>(".cselect-btn")!
+    .addEventListener("click", (e) => {
+      e.stopPropagation();
+      document
+        .querySelectorAll(".cselect.open")
+        .forEach((el) => el !== mount && el.classList.remove("open"));
+      mount.classList.toggle("open");
+    });
+  list.addEventListener("click", (e) => {
+    const li = (e.target as HTMLElement).closest<HTMLElement>(".cselect-opt");
+    if (!li) return;
+    current = li.dataset.v!;
+    render();
+    mount.classList.remove("open");
+  });
+
+  return { value: () => current };
+}
+
 async function showSettings() {
   stopMainTick();
 
   app.innerHTML = `
     <main class="dash settings-page">
-      <header class="dash-head">
-        <button class="icon-btn" id="btn-back" title="Back">←</button>
+      <header class="dash-head settings-head">
+        <button class="icon-btn" id="btn-back" title="Back">${ICON_BACK}</button>
         <h1>Settings</h1>
         <span class="icon-spacer"></span>
       </header>
 
-      <section class="card">
-        <h2>Timing</h2>
-        <div class="grid">
-          <label>Work interval <span class="unit">(minutes)</span>
-            <input type="number" id="f-work" min="1" max="120" />
-          </label>
-          <label>Break length <span class="unit">(seconds)</span>
-            <input type="number" id="f-break" min="5" max="600" />
-          </label>
-          <label>Pre-break warning <span class="unit">(seconds, 0=off)</span>
-            <input type="number" id="f-warn" min="0" max="120" />
-          </label>
-        </div>
-      </section>
+      <div class="settings-scroll">
+        <section class="card s-card">
+          <h2><span class="s-dot"></span> Timing</h2>
+          <div class="grid">
+            <label>Work interval <span class="unit">(min)</span>
+              <input type="number" id="f-work" min="1" max="120" />
+            </label>
+            <label>Break length <span class="unit">(sec)</span>
+              <input type="number" id="f-break" min="5" max="600" />
+            </label>
+            <label>Pre-break warning <span class="unit">(sec, 0=off)</span>
+              <input type="number" id="f-warn" min="0" max="120" />
+            </label>
+          </div>
+        </section>
 
-      <section class="card">
-        <h2>Reminders</h2>
-        <div class="grid">
-          <label>Reminder intensity
-            <select id="f-esc">
-              <option value="gentle">Gentle (notification)</option>
-              <option value="standard">Standard (window)</option>
-              <option value="forced">Forced (fullscreen)</option>
-            </select>
-          </label>
-          <label>Snooze duration <span class="unit">(minutes)</span>
-            <input type="number" id="f-snooze" min="1" max="60" />
-          </label>
-          <label>Max postpones <span class="unit">(0=unlimited)</span>
-            <input type="number" id="f-max" min="0" max="10" />
-          </label>
-          <label class="check">
-            <input type="checkbox" id="f-sound" /> Play a sound when a break starts
-          </label>
-        </div>
-      </section>
+        <section class="card s-card">
+          <h2><span class="s-dot"></span> Reminders</h2>
+          <div class="grid">
+            <label>Reminder intensity<div id="sel-esc"></div></label>
+            <label>Snooze duration <span class="unit">(min)</span>
+              <input type="number" id="f-snooze" min="1" max="60" />
+            </label>
+            <label>Max postpones <span class="unit">(0=∞)</span>
+              <input type="number" id="f-max" min="0" max="10" />
+            </label>
+            <label class="toggle-row">
+              <span>Play a sound when a break starts</span>
+              <span class="switch">
+                <input type="checkbox" id="f-sound" />
+                <span class="slider"></span>
+              </span>
+            </label>
+          </div>
+        </section>
 
-      <section class="card">
-        <h2>Floating widget</h2>
-        <div class="grid">
-          <label>Widget mode
-            <select id="f-wmode">
-              <option value="off">Off</option>
-              <option value="minimized">When minimized</option>
-              <option value="always">Always on top</option>
-            </select>
-          </label>
-          <label>Widget shape
-            <select id="f-wshape">
-              <option value="round">Round</option>
-              <option value="squircle">Squircle</option>
-              <option value="square">Square</option>
-            </select>
-          </label>
-          <label>Widget width <span class="unit">(px)</span>
-            <input type="number" id="f-wwidth" min="80" max="480" />
-          </label>
-          <label>Widget height <span class="unit">(px)</span>
-            <input type="number" id="f-wheight" min="80" max="480" />
-          </label>
-          <label>Widget opacity <span class="unit">(%)</span>
-            <input type="number" id="f-wopacity" min="20" max="100" />
-          </label>
-        </div>
-      </section>
+        <section class="card s-card">
+          <h2><span class="s-dot"></span> Floating widget</h2>
+          <div class="grid">
+            <label>Widget mode<div id="sel-wmode"></div></label>
+            <label>Widget shape<div id="sel-wshape"></div></label>
+            <label>Width <span class="unit">(px)</span>
+              <input type="number" id="f-wwidth" min="120" max="480" />
+            </label>
+            <label>Height <span class="unit">(px)</span>
+              <input type="number" id="f-wheight" min="120" max="480" />
+            </label>
+            <label>Opacity <span class="unit">(%)</span>
+              <input type="number" id="f-wopacity" min="20" max="100" />
+            </label>
+          </div>
+        </section>
+      </div>
 
       <div class="save-row">
         <button class="btn" id="btn-save">Save settings</button>
@@ -440,31 +532,54 @@ async function showSettings() {
   const $ = <T extends HTMLElement>(sel: string) =>
     document.querySelector<T>(sel)!;
 
+  const c = mainSettings;
   const fWork = $<HTMLInputElement>("#f-work");
   const fBreak = $<HTMLInputElement>("#f-break");
   const fWarn = $<HTMLInputElement>("#f-warn");
-  const fEsc = $<HTMLSelectElement>("#f-esc");
   const fSnooze = $<HTMLInputElement>("#f-snooze");
   const fMax = $<HTMLInputElement>("#f-max");
   const fSound = $<HTMLInputElement>("#f-sound");
-  const fWMode = $<HTMLSelectElement>("#f-wmode");
-  const fWShape = $<HTMLSelectElement>("#f-wshape");
   const fWWidth = $<HTMLInputElement>("#f-wwidth");
   const fWHeight = $<HTMLInputElement>("#f-wheight");
   const fWOpacity = $<HTMLInputElement>("#f-wopacity");
   const savedMsg = $<HTMLSpanElement>("#saved-msg");
 
-  // fill from the last known settings
-  const c = mainSettings;
+  // animated custom dropdowns (readable, unlike the native popup)
+  const selEsc = customSelect(
+    $("#sel-esc"),
+    [
+      { value: "gentle", label: "Gentle (notification)" },
+      { value: "standard", label: "Standard (window)" },
+      { value: "forced", label: "Forced (fullscreen)" },
+    ],
+    c.escalation,
+  );
+  const selWMode = customSelect(
+    $("#sel-wmode"),
+    [
+      { value: "off", label: "Off" },
+      { value: "minimized", label: "When minimized" },
+      { value: "always", label: "Always on top" },
+    ],
+    c.widgetMode,
+  );
+  const selWShape = customSelect(
+    $("#sel-wshape"),
+    [
+      { value: "round", label: "Round" },
+      { value: "squircle", label: "Squircle" },
+      { value: "square", label: "Square" },
+    ],
+    c.widgetShape,
+  );
+
+  // fill numeric/toggle fields
   fWork.value = String(Math.round(c.workIntervalSecs / 60));
   fBreak.value = String(c.breakLengthSecs);
   fWarn.value = String(c.preBreakWarningSecs);
-  fEsc.value = c.escalation;
   fSnooze.value = String(Math.round(c.snoozeSecs / 60));
   fMax.value = String(c.maxPostpones);
   fSound.checked = c.soundEnabled;
-  fWMode.value = c.widgetMode;
-  fWShape.value = c.widgetShape;
   fWWidth.value = String(c.widgetWidth);
   fWHeight.value = String(c.widgetHeight);
   fWOpacity.value = String(c.widgetOpacity);
@@ -479,23 +594,25 @@ async function showSettings() {
       workIntervalSecs: Number(fWork.value) * 60,
       breakLengthSecs: Number(fBreak.value),
       preBreakWarningSecs: Number(fWarn.value),
-      escalation: fEsc.value as Escalation,
+      escalation: selEsc.value() as Escalation,
       snoozeSecs: Number(fSnooze.value) * 60,
       maxPostpones: Number(fMax.value),
       soundEnabled: fSound.checked,
-      widgetMode: fWMode.value as WidgetMode,
-      widgetShape: fWShape.value as WidgetShape,
+      widgetMode: selWMode.value() as WidgetMode,
+      widgetShape: selWShape.value() as WidgetShape,
       widgetWidth: Number(fWWidth.value),
       widgetHeight: Number(fWHeight.value),
       widgetOpacity: Number(fWOpacity.value),
     };
     mainSettings = await invoke<Settings>("set_settings", { settings: next });
-    // reflect any clamping the backend applied
     fWWidth.value = String(mainSettings.widgetWidth);
     fWHeight.value = String(mainSettings.widgetHeight);
     fWOpacity.value = String(mainSettings.widgetOpacity);
     savedMsg.textContent = "Saved ✓";
-    setTimeout(() => (savedMsg.textContent = ""), 1800);
+    savedMsg.classList.remove("show");
+    void savedMsg.offsetWidth; // restart the animation
+    savedMsg.classList.add("show");
+    setTimeout(() => (savedMsg.textContent = ""), 2000);
   });
 }
 
@@ -507,6 +624,15 @@ async function renderMainWindow() {
 // ---------------------------------------------------------------------------
 // Boot — pick the view from the URL hash
 // ---------------------------------------------------------------------------
+
+// close any open custom dropdown when clicking elsewhere
+document.addEventListener("click", (e) => {
+  if (!(e.target as HTMLElement).closest(".cselect")) {
+    document
+      .querySelectorAll(".cselect.open")
+      .forEach((el) => el.classList.remove("open"));
+  }
+});
 
 window.addEventListener("DOMContentLoaded", () => {
   if (location.hash.startsWith("#break")) {

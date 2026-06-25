@@ -109,8 +109,8 @@ fn clamp_settings(mut s: Settings) -> Settings {
     if !matches!(s.escalation.as_str(), "gentle" | "standard" | "forced") {
         s.escalation = "standard".into();
     }
-    s.widget_width = s.widget_width.clamp(80, 480);
-    s.widget_height = s.widget_height.clamp(80, 480);
+    s.widget_width = s.widget_width.clamp(120, 480);
+    s.widget_height = s.widget_height.clamp(120, 480);
     s.widget_opacity = s.widget_opacity.clamp(20, 100);
     if !matches!(s.widget_mode.as_str(), "off" | "minimized" | "always") {
         s.widget_mode = "minimized".into();
@@ -144,6 +144,13 @@ struct TimerState {
 struct AppState {
     settings: Mutex<Settings>,
     timer: Mutex<TimerState>,
+    /// Whether the user wants the main window shown. We track this ourselves
+    /// instead of polling is_visible(), which is unreliable on some compositors.
+    main_shown: Mutex<bool>,
+    /// True once we've seen the main window report not-minimized at least once
+    /// (i.e. it's fully mapped). is_minimized() reports a false "true" while the
+    /// window is still being mapped at startup, so we ignore it until ready.
+    main_ready: Mutex<bool>,
 }
 
 /// Snapshot sent to the frontend on every tick.
@@ -307,21 +314,47 @@ fn update_widget_visibility(app: &AppHandle) {
         let m = state.settings.lock().unwrap().widget_mode.clone();
         m
     };
-    let break_open = app.get_webview_window("break").is_some();
-    let main_visible = app
-        .get_webview_window("main")
-        .and_then(|w| w.is_visible().ok())
-        .unwrap_or(true);
+    // Catch a native minimize (the title-bar button) and convert it to
+    // hide-to-tray: a minimized window stays grouped with the app, so the WM
+    // would minimize the widget along with it. This is the only place we poll
+    // is_minimized(), and only while we believe the window is shown, so a stray
+    // reading can't keep re-hiding it.
+    if mode != "off" {
+        let shown = *app.state::<AppState>().main_shown.lock().unwrap();
+        if shown {
+            if let Some(main) = app.get_webview_window("main") {
+                let minimized = main.is_minimized().unwrap_or(false);
+                let state = app.state::<AppState>();
+                let mut ready = state.main_ready.lock().unwrap();
+                if !*ready {
+                    // Wait until the window is properly mapped (reports
+                    // not-minimized) before trusting a "minimized" reading.
+                    if !minimized {
+                        *ready = true;
+                    }
+                } else if minimized {
+                    drop(ready);
+                    let _ = main.unminimize();
+                    let _ = main.hide();
+                    *state.main_shown.lock().unwrap() = false;
+                    *state.main_ready.lock().unwrap() = false;
+                }
+            }
+        }
+    }
 
-    let want = mode != "off" && !break_open && (mode == "always" || !main_visible);
+    let main_shown = *app.state::<AppState>().main_shown.lock().unwrap();
+    let break_open = app.get_webview_window("break").is_some();
+    let want = mode != "off" && !break_open && (mode == "always" || !main_shown);
     let is_visible = widget.is_visible().unwrap_or(false);
 
     if want {
         if !is_visible {
             let _ = widget.show();
         }
-        // Re-assert each tick: some compositors drop keep-above when another
-        // window takes focus.
+        // The WM may minimize the widget together with the app; bring it back,
+        // and re-assert keep-above (some compositors drop it on focus change).
+        let _ = widget.unminimize();
         let _ = widget.set_always_on_top(true);
     } else if is_visible {
         let _ = widget.hide();
@@ -359,9 +392,15 @@ fn emit_tick(app: &AppHandle) {
 
 fn show_main_window(app: &AppHandle) {
     if let Some(w) = app.get_webview_window("main") {
-        let _ = w.show();
         let _ = w.unminimize();
+        let _ = w.show();
         let _ = w.set_focus();
+    }
+    {
+        let state = app.state::<AppState>();
+        *state.main_shown.lock().unwrap() = true;
+        // re-confirm mapping before we trust is_minimized() again
+        *state.main_ready.lock().unwrap() = false;
     }
     update_widget_visibility(app);
 }
@@ -619,6 +658,8 @@ pub fn run() {
             app.manage(AppState {
                 settings: Mutex::new(settings),
                 timer: Mutex::new(timer),
+                main_shown: Mutex::new(true),
+                main_ready: Mutex::new(false),
             });
 
             // Tray icon + quick menu.
@@ -659,7 +700,9 @@ pub fn run() {
                     if let WindowEvent::CloseRequested { api, .. } = event {
                         api.prevent_close();
                         let _ = main_clone.hide();
-                        update_widget_visibility(main_clone.app_handle());
+                        let app = main_clone.app_handle();
+                        *app.state::<AppState>().main_shown.lock().unwrap() = false;
+                        update_widget_visibility(app);
                     }
                 });
             }
@@ -688,8 +731,8 @@ pub fn run() {
                         }
                         let state = wh.state::<AppState>();
                         let mut s = state.settings.lock().unwrap();
-                        s.widget_width = (logical.width.round() as u32).clamp(80, 480);
-                        s.widget_height = (logical.height.round() as u32).clamp(80, 480);
+                        s.widget_width = (logical.width.round() as u32).clamp(120, 480);
+                        s.widget_height = (logical.height.round() as u32).clamp(120, 480);
                         save_settings(&wh, &s);
                     }
                     _ => {}
