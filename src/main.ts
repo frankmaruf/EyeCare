@@ -1,12 +1,12 @@
 import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 
 // ---------------------------------------------------------------------------
 // Shared types (mirror the Rust structs)
 // ---------------------------------------------------------------------------
 
 type Escalation = "gentle" | "standard" | "forced";
-
 type WidgetMode = "off" | "minimized" | "always";
 type WidgetShape = "round" | "squircle" | "square";
 
@@ -129,193 +129,6 @@ function renderBreak() {
 }
 
 // ---------------------------------------------------------------------------
-// Main dashboard + settings view
-// ---------------------------------------------------------------------------
-
-async function renderDashboard() {
-  const s = await invoke<Settings>("get_settings");
-  let current = s; // last known full settings, so saves preserve unshown fields
-
-  app.innerHTML = `
-    <main class="dash">
-      <header class="dash-head">
-        <h1>EyeBreak</h1>
-        <span class="tag" id="phase-tag">working</span>
-      </header>
-
-      <section class="ring-wrap">
-        <svg class="ring" viewBox="0 0 280 280" width="220" height="220">
-          <circle class="ring-bg" cx="140" cy="140" r="${RADIUS}"></circle>
-          <circle class="ring-fg" cx="140" cy="140" r="${RADIUS}"
-            transform="rotate(-90 140 140)"></circle>
-        </svg>
-        <div class="ring-center">
-          <div class="ring-time" id="ring-time">--:--</div>
-          <div class="ring-label" id="ring-label">until next break</div>
-        </div>
-      </section>
-
-      <section class="controls">
-        <button class="btn" id="btn-pause">Pause</button>
-        <button class="btn ghost" id="btn-take">Take break now</button>
-        <button class="btn ghost" id="btn-skip">Skip</button>
-      </section>
-
-      <section class="card">
-        <h2>Settings</h2>
-        <div class="grid">
-          <label>Work interval <span class="unit">(minutes)</span>
-            <input type="number" id="f-work" min="1" max="120" />
-          </label>
-          <label>Break length <span class="unit">(seconds)</span>
-            <input type="number" id="f-break" min="5" max="600" />
-          </label>
-          <label>Pre-break warning <span class="unit">(seconds, 0=off)</span>
-            <input type="number" id="f-warn" min="0" max="120" />
-          </label>
-          <label>Reminder intensity
-            <select id="f-esc">
-              <option value="gentle">Gentle (notification)</option>
-              <option value="standard">Standard (window)</option>
-              <option value="forced">Forced (fullscreen)</option>
-            </select>
-          </label>
-          <label>Snooze duration <span class="unit">(minutes)</span>
-            <input type="number" id="f-snooze" min="1" max="60" />
-          </label>
-          <label>Max postpones <span class="unit">(0=unlimited)</span>
-            <input type="number" id="f-max" min="0" max="10" />
-          </label>
-          <label class="check">
-            <input type="checkbox" id="f-sound" /> Play a sound when a break starts
-          </label>
-
-          <span class="section-label">Floating widget (shows when minimized)</span>
-          <label>Widget mode
-            <select id="f-wmode">
-              <option value="off">Off</option>
-              <option value="minimized">When minimized</option>
-              <option value="always">Always on top</option>
-            </select>
-          </label>
-          <label>Widget shape
-            <select id="f-wshape">
-              <option value="round">Round</option>
-              <option value="squircle">Squircle</option>
-              <option value="square">Square</option>
-            </select>
-          </label>
-          <label>Widget size <span class="unit">(px)</span>
-            <input type="number" id="f-wsize" min="80" max="320" />
-          </label>
-          <label>Widget opacity <span class="unit">(%)</span>
-            <input type="number" id="f-wopacity" min="20" max="100" />
-          </label>
-        </div>
-        <div class="save-row">
-          <button class="btn" id="btn-save">Save settings</button>
-          <span class="saved" id="saved-msg"></span>
-        </div>
-      </section>
-
-      <footer class="dash-foot">
-        Closing this window keeps EyeBreak running in the tray.
-      </footer>
-    </main>
-  `;
-
-  // --- element refs ---
-  const ringFg = document.querySelector<SVGCircleElement>(".ring-fg")!;
-  const ringTime = document.querySelector<HTMLDivElement>("#ring-time")!;
-  const ringLabel = document.querySelector<HTMLDivElement>("#ring-label")!;
-  const phaseTag = document.querySelector<HTMLSpanElement>("#phase-tag")!;
-  const btnPause = document.querySelector<HTMLButtonElement>("#btn-pause")!;
-  const btnTake = document.querySelector<HTMLButtonElement>("#btn-take")!;
-  const btnSkip = document.querySelector<HTMLButtonElement>("#btn-skip")!;
-
-  const fWork = document.querySelector<HTMLInputElement>("#f-work")!;
-  const fBreak = document.querySelector<HTMLInputElement>("#f-break")!;
-  const fWarn = document.querySelector<HTMLInputElement>("#f-warn")!;
-  const fEsc = document.querySelector<HTMLSelectElement>("#f-esc")!;
-  const fSnooze = document.querySelector<HTMLInputElement>("#f-snooze")!;
-  const fMax = document.querySelector<HTMLInputElement>("#f-max")!;
-  const fSound = document.querySelector<HTMLInputElement>("#f-sound")!;
-  const fWMode = document.querySelector<HTMLSelectElement>("#f-wmode")!;
-  const fWShape = document.querySelector<HTMLSelectElement>("#f-wshape")!;
-  const fWSize = document.querySelector<HTMLInputElement>("#f-wsize")!;
-  const fWOpacity = document.querySelector<HTMLInputElement>("#f-wopacity")!;
-  const btnSave = document.querySelector<HTMLButtonElement>("#btn-save")!;
-  const savedMsg = document.querySelector<HTMLSpanElement>("#saved-msg")!;
-
-  // --- fill the form from current settings ---
-  function fillForm(cfg: Settings) {
-    current = cfg;
-    fWork.value = String(Math.round(cfg.workIntervalSecs / 60));
-    fBreak.value = String(cfg.breakLengthSecs);
-    fWarn.value = String(cfg.preBreakWarningSecs);
-    fEsc.value = cfg.escalation;
-    fSnooze.value = String(Math.round(cfg.snoozeSecs / 60));
-    fMax.value = String(cfg.maxPostpones);
-    fSound.checked = cfg.soundEnabled;
-    fWMode.value = cfg.widgetMode;
-    fWShape.value = cfg.widgetShape;
-    fWSize.value = String(cfg.widgetSize);
-    fWOpacity.value = String(cfg.widgetOpacity);
-  }
-  fillForm(s);
-
-  // --- timer controls ---
-  let paused = false;
-  btnPause.addEventListener("click", async () => {
-    paused = !paused;
-    await invoke("timer_set_paused", { paused });
-  });
-  btnTake.addEventListener("click", () => invoke("timer_take_break"));
-  btnSkip.addEventListener("click", () => invoke("timer_skip"));
-
-  // --- save settings ---
-  btnSave.addEventListener("click", async () => {
-    const next: Settings = {
-      ...current, // preserve fields not shown here (e.g. widget position)
-      workIntervalSecs: Number(fWork.value) * 60,
-      breakLengthSecs: Number(fBreak.value),
-      preBreakWarningSecs: Number(fWarn.value),
-      escalation: fEsc.value as Escalation,
-      snoozeSecs: Number(fSnooze.value) * 60,
-      maxPostpones: Number(fMax.value),
-      soundEnabled: fSound.checked,
-      widgetMode: fWMode.value as WidgetMode,
-      widgetShape: fWShape.value as WidgetShape,
-      widgetSize: Number(fWSize.value),
-      widgetOpacity: Number(fWOpacity.value),
-    };
-    const saved = await invoke<Settings>("set_settings", { settings: next });
-    fillForm(saved); // reflect any clamping the backend applied
-    savedMsg.textContent = "Saved ✓";
-    setTimeout(() => (savedMsg.textContent = ""), 1800);
-  });
-
-  // --- live timer updates ---
-  function applyTick(t: TimerSnapshot) {
-    paused = t.paused;
-    btnPause.textContent = t.paused ? "Resume" : "Pause";
-    phaseTag.textContent = t.paused
-      ? "paused"
-      : t.phase === "break"
-        ? "break"
-        : "working";
-    phaseTag.dataset.phase = t.paused ? "paused" : t.phase;
-    ringTime.textContent = fmt(t.remaining);
-    ringLabel.textContent =
-      t.phase === "break" ? "break time left" : "until next break";
-    setRing(ringFg, t.remaining, t.total);
-  }
-
-  applyTick(await invoke<TimerSnapshot>("get_timer"));
-  await listen<TimerSnapshot>("timer:tick", (e) => applyTick(e.payload));
-}
-
-// ---------------------------------------------------------------------------
 // Floating widget view (loaded at index.html#widget)
 // ---------------------------------------------------------------------------
 
@@ -338,13 +151,18 @@ async function renderWidget() {
   const s = await invoke<Settings>("get_settings");
 
   app.innerHTML = `
-    <div class="widget" data-tauri-drag-region>
-      <svg class="w-ring" viewBox="0 0 100 100" data-tauri-drag-region>
+    <div class="widget">
+      <svg class="w-ring" viewBox="0 0 100 100">
         <circle class="w-ring-bg" cx="50" cy="50" r="44"></circle>
         <circle class="w-ring-fg" cx="50" cy="50" r="44" transform="rotate(-90 50 50)"></circle>
       </svg>
-      <div class="w-center" data-tauri-drag-region>
+      <div class="w-center">
         <div class="w-time" id="w-time">--:--</div>
+      </div>
+      <div class="w-actions">
+        <button id="w-pause" title="Pause / Resume">⏸</button>
+        <button id="w-take" title="Take a break now">☕</button>
+        <button id="w-skip" title="Skip">⏭</button>
       </div>
       <button class="w-restore" id="w-restore" title="Open EyeBreak">⤢</button>
     </div>
@@ -355,15 +173,41 @@ async function renderWidget() {
   const card = document.querySelector<HTMLDivElement>(".widget")!;
   const ringFg = document.querySelector<SVGCircleElement>(".w-ring-fg")!;
   const timeEl = document.querySelector<HTMLDivElement>("#w-time")!;
+  const pauseBtn = document.querySelector<HTMLButtonElement>("#w-pause")!;
 
-  document
-    .querySelector<HTMLButtonElement>("#w-restore")!
-    .addEventListener("click", (e) => {
-      e.stopPropagation();
-      invoke("show_main");
-    });
+  // Drag the frameless window: data-tauri-drag-region doesn't fire reliably
+  // when the click lands on the SVG circles, so start the drag from JS.
+  card.addEventListener("pointerdown", async (e) => {
+    if (e.button !== 0) return;
+    if ((e.target as HTMLElement).closest("button")) return; // let buttons work
+    try {
+      await getCurrentWindow().startDragging();
+    } catch {
+      /* ignore */
+    }
+  });
+
+  let paused = false;
+  pauseBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    invoke("timer_set_paused", { paused: !paused });
+  });
+  document.querySelector<HTMLButtonElement>("#w-take")!.addEventListener("click", (e) => {
+    e.stopPropagation();
+    invoke("timer_take_break");
+  });
+  document.querySelector<HTMLButtonElement>("#w-skip")!.addEventListener("click", (e) => {
+    e.stopPropagation();
+    invoke("timer_skip");
+  });
+  document.querySelector<HTMLButtonElement>("#w-restore")!.addEventListener("click", (e) => {
+    e.stopPropagation();
+    invoke("show_main");
+  });
 
   const update = (t: TimerSnapshot) => {
+    paused = t.paused;
+    pauseBtn.textContent = t.paused ? "▶" : "⏸";
     timeEl.textContent = fmt(t.remaining);
     setRing(ringFg, t.remaining, t.total, WIDGET_CIRC);
     card.dataset.phase = t.paused ? "paused" : t.phase;
@@ -372,6 +216,243 @@ async function renderWidget() {
   update(await invoke<TimerSnapshot>("get_timer"));
   await listen<TimerSnapshot>("timer:tick", (e) => update(e.payload));
   await listen<Settings>("settings:changed", (e) => applyWidgetStyle(e.payload));
+}
+
+// ---------------------------------------------------------------------------
+// Main window — two views: timer dashboard <-> settings page
+// ---------------------------------------------------------------------------
+
+let mainSettings: Settings;
+let unlistenMainTick: UnlistenFn | null = null;
+
+function stopMainTick() {
+  if (unlistenMainTick) {
+    unlistenMainTick();
+    unlistenMainTick = null;
+  }
+}
+
+async function showDashboard() {
+  stopMainTick();
+
+  app.innerHTML = `
+    <main class="dash">
+      <header class="dash-head">
+        <div class="head-left">
+          <h1>EyeBreak</h1>
+          <span class="tag" id="phase-tag">working</span>
+        </div>
+        <button class="icon-btn" id="btn-settings" title="Settings">⚙</button>
+      </header>
+
+      <section class="ring-wrap">
+        <svg class="ring" viewBox="0 0 280 280" width="220" height="220">
+          <circle class="ring-bg" cx="140" cy="140" r="${RADIUS}"></circle>
+          <circle class="ring-fg" cx="140" cy="140" r="${RADIUS}"
+            transform="rotate(-90 140 140)"></circle>
+        </svg>
+        <div class="ring-center">
+          <div class="ring-time" id="ring-time">--:--</div>
+          <div class="ring-label" id="ring-label">until next break</div>
+        </div>
+      </section>
+
+      <section class="controls">
+        <button class="btn" id="btn-pause">Pause</button>
+        <button class="btn ghost" id="btn-take">Take break now</button>
+        <button class="btn ghost" id="btn-skip">Skip</button>
+      </section>
+
+      <footer class="dash-foot">
+        Closing this window keeps EyeBreak running in the tray and (if enabled) shows the floating widget.
+      </footer>
+    </main>
+  `;
+
+  const ringFg = document.querySelector<SVGCircleElement>(".ring-fg")!;
+  const ringTime = document.querySelector<HTMLDivElement>("#ring-time")!;
+  const ringLabel = document.querySelector<HTMLDivElement>("#ring-label")!;
+  const phaseTag = document.querySelector<HTMLSpanElement>("#phase-tag")!;
+  const btnPause = document.querySelector<HTMLButtonElement>("#btn-pause")!;
+
+  document
+    .querySelector<HTMLButtonElement>("#btn-settings")!
+    .addEventListener("click", () => showSettings());
+  document
+    .querySelector<HTMLButtonElement>("#btn-take")!
+    .addEventListener("click", () => invoke("timer_take_break"));
+  document
+    .querySelector<HTMLButtonElement>("#btn-skip")!
+    .addEventListener("click", () => invoke("timer_skip"));
+
+  let paused = false;
+  btnPause.addEventListener("click", () =>
+    invoke("timer_set_paused", { paused: !paused }),
+  );
+
+  const applyTick = (t: TimerSnapshot) => {
+    paused = t.paused;
+    btnPause.textContent = t.paused ? "Resume" : "Pause";
+    phaseTag.textContent = t.paused
+      ? "paused"
+      : t.phase === "break"
+        ? "break"
+        : "working";
+    phaseTag.dataset.phase = t.paused ? "paused" : t.phase;
+    ringTime.textContent = fmt(t.remaining);
+    ringLabel.textContent =
+      t.phase === "break" ? "break time left" : "until next break";
+    setRing(ringFg, t.remaining, t.total);
+  };
+
+  applyTick(await invoke<TimerSnapshot>("get_timer"));
+  unlistenMainTick = await listen<TimerSnapshot>("timer:tick", (e) =>
+    applyTick(e.payload),
+  );
+}
+
+async function showSettings() {
+  stopMainTick();
+
+  app.innerHTML = `
+    <main class="dash settings-page">
+      <header class="dash-head">
+        <button class="icon-btn" id="btn-back" title="Back">←</button>
+        <h1>Settings</h1>
+        <span class="icon-spacer"></span>
+      </header>
+
+      <section class="card">
+        <h2>Timing</h2>
+        <div class="grid">
+          <label>Work interval <span class="unit">(minutes)</span>
+            <input type="number" id="f-work" min="1" max="120" />
+          </label>
+          <label>Break length <span class="unit">(seconds)</span>
+            <input type="number" id="f-break" min="5" max="600" />
+          </label>
+          <label>Pre-break warning <span class="unit">(seconds, 0=off)</span>
+            <input type="number" id="f-warn" min="0" max="120" />
+          </label>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Reminders</h2>
+        <div class="grid">
+          <label>Reminder intensity
+            <select id="f-esc">
+              <option value="gentle">Gentle (notification)</option>
+              <option value="standard">Standard (window)</option>
+              <option value="forced">Forced (fullscreen)</option>
+            </select>
+          </label>
+          <label>Snooze duration <span class="unit">(minutes)</span>
+            <input type="number" id="f-snooze" min="1" max="60" />
+          </label>
+          <label>Max postpones <span class="unit">(0=unlimited)</span>
+            <input type="number" id="f-max" min="0" max="10" />
+          </label>
+          <label class="check">
+            <input type="checkbox" id="f-sound" /> Play a sound when a break starts
+          </label>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Floating widget</h2>
+        <div class="grid">
+          <label>Widget mode
+            <select id="f-wmode">
+              <option value="off">Off</option>
+              <option value="minimized">When minimized</option>
+              <option value="always">Always on top</option>
+            </select>
+          </label>
+          <label>Widget shape
+            <select id="f-wshape">
+              <option value="round">Round</option>
+              <option value="squircle">Squircle</option>
+              <option value="square">Square</option>
+            </select>
+          </label>
+          <label>Widget size <span class="unit">(px)</span>
+            <input type="number" id="f-wsize" min="80" max="320" />
+          </label>
+          <label>Widget opacity <span class="unit">(%)</span>
+            <input type="number" id="f-wopacity" min="20" max="100" />
+          </label>
+        </div>
+      </section>
+
+      <div class="save-row">
+        <button class="btn" id="btn-save">Save settings</button>
+        <span class="saved" id="saved-msg"></span>
+      </div>
+    </main>
+  `;
+
+  const $ = <T extends HTMLElement>(sel: string) =>
+    document.querySelector<T>(sel)!;
+
+  const fWork = $<HTMLInputElement>("#f-work");
+  const fBreak = $<HTMLInputElement>("#f-break");
+  const fWarn = $<HTMLInputElement>("#f-warn");
+  const fEsc = $<HTMLSelectElement>("#f-esc");
+  const fSnooze = $<HTMLInputElement>("#f-snooze");
+  const fMax = $<HTMLInputElement>("#f-max");
+  const fSound = $<HTMLInputElement>("#f-sound");
+  const fWMode = $<HTMLSelectElement>("#f-wmode");
+  const fWShape = $<HTMLSelectElement>("#f-wshape");
+  const fWSize = $<HTMLInputElement>("#f-wsize");
+  const fWOpacity = $<HTMLInputElement>("#f-wopacity");
+  const savedMsg = $<HTMLSpanElement>("#saved-msg");
+
+  // fill from the last known settings
+  const c = mainSettings;
+  fWork.value = String(Math.round(c.workIntervalSecs / 60));
+  fBreak.value = String(c.breakLengthSecs);
+  fWarn.value = String(c.preBreakWarningSecs);
+  fEsc.value = c.escalation;
+  fSnooze.value = String(Math.round(c.snoozeSecs / 60));
+  fMax.value = String(c.maxPostpones);
+  fSound.checked = c.soundEnabled;
+  fWMode.value = c.widgetMode;
+  fWShape.value = c.widgetShape;
+  fWSize.value = String(c.widgetSize);
+  fWOpacity.value = String(c.widgetOpacity);
+
+  $<HTMLButtonElement>("#btn-back").addEventListener("click", () =>
+    showDashboard(),
+  );
+
+  $<HTMLButtonElement>("#btn-save").addEventListener("click", async () => {
+    const next: Settings = {
+      ...mainSettings, // preserve fields not shown here (e.g. widget position)
+      workIntervalSecs: Number(fWork.value) * 60,
+      breakLengthSecs: Number(fBreak.value),
+      preBreakWarningSecs: Number(fWarn.value),
+      escalation: fEsc.value as Escalation,
+      snoozeSecs: Number(fSnooze.value) * 60,
+      maxPostpones: Number(fMax.value),
+      soundEnabled: fSound.checked,
+      widgetMode: fWMode.value as WidgetMode,
+      widgetShape: fWShape.value as WidgetShape,
+      widgetSize: Number(fWSize.value),
+      widgetOpacity: Number(fWOpacity.value),
+    };
+    mainSettings = await invoke<Settings>("set_settings", { settings: next });
+    // reflect any clamping the backend applied
+    fWSize.value = String(mainSettings.widgetSize);
+    fWOpacity.value = String(mainSettings.widgetOpacity);
+    savedMsg.textContent = "Saved ✓";
+    setTimeout(() => (savedMsg.textContent = ""), 1800);
+  });
+}
+
+async function renderMainWindow() {
+  mainSettings = await invoke<Settings>("get_settings");
+  showDashboard();
 }
 
 // ---------------------------------------------------------------------------
@@ -384,6 +465,6 @@ window.addEventListener("DOMContentLoaded", () => {
   } else if (location.hash.startsWith("#widget")) {
     renderWidget();
   } else {
-    renderDashboard();
+    renderMainWindow();
   }
 });
