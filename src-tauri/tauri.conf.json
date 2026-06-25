@@ -61,7 +61,7 @@
   "plugins": {
     "updater": {
       "endpoints": [
-        "https://github.com/khulnatech/eyebreak/releases/latest/download/latest.json"
+        "https://github.com/frankmaruf/EyeCare/releases/latest/download/latest.json"
       ],
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDI1MDY4NzJEOUJERjU2MTAKUldRUVZ0K2JMWWNHSlZ0YU5MM2l5aGxIa1hMS1RaZnFOYTRJUTdlcHlWVHN0eEJPRnFra0xMZTgK"
     }

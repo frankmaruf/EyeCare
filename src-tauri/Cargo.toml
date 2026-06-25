@@ -1,9 +1,12 @@
 [package]
 name = "eyecare"
 version = "0.1.0"
-description = "EyeBreak — cross-platform 20-20-20 eye break reminder"
+description = "EyeCare — cross-platform eye-health & break reminder"
 authors = ["Md. Abdullah Al Maruf"]
 edition = "2021"
+license = "Apache-2.0"
+repository = "https://github.com/frankmaruf/EyeCare"
+homepage = "https://github.com/frankmaruf/EyeCare"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
