@@ -165,6 +165,15 @@ struct Settings {
     /// Track local break stats / streaks.
     #[serde(default = "d_true")]
     stats_enabled: bool,
+    /// Periodic artificial-tears / eye-drops reminder while working.
+    #[serde(default)]
+    eyedrops_enabled: bool,
+    #[serde(default = "d_eyedrops_interval")]
+    eyedrops_interval_secs: u64,
+}
+
+fn d_eyedrops_interval() -> u64 {
+    2 * 3600
 }
 
 fn d_accent() -> String {
@@ -285,6 +294,8 @@ impl Default for Settings {
             calm_visuals_enabled: true,
             accent: d_accent(),
             stats_enabled: true,
+            eyedrops_enabled: false,
+            eyedrops_interval_secs: d_eyedrops_interval(),
         }
     }
 }
@@ -317,6 +328,7 @@ fn clamp_settings(mut s: Settings) -> Settings {
     s.blink_interval_secs = s.blink_interval_secs.clamp(30, 3600);
     s.hydration_interval_secs = s.hydration_interval_secs.clamp(5 * 60, 4 * 60 * 60);
     s.posture_interval_secs = s.posture_interval_secs.clamp(5 * 60, 4 * 60 * 60);
+    s.eyedrops_interval_secs = s.eyedrops_interval_secs.clamp(5 * 60, 8 * 60 * 60);
     s.evening_hour = s.evening_hour.min(23);
     s
 }
@@ -347,9 +359,10 @@ struct TimerState {
     blink_remaining: u64,
     /// Currently frozen because the user is idle.
     idle: bool,
-    /// Countdowns to the next hydration / posture nudge.
+    /// Countdowns to the next hydration / posture / eye-drops nudge.
     hydration_remaining: u64,
     posture_remaining: u64,
+    eyedrops_remaining: u64,
     /// Day-of-year the evening nudge last fired (-1 = not yet).
     evening_nudged_day: i32,
 }
@@ -640,7 +653,9 @@ fn start_break(app: &AppHandle) {
         builder = builder.fullscreen(true);
     }
 
-    let _ = builder.build();
+    if let Ok(w) = builder.build() {
+        let _ = w.set_icon(app_image());
+    }
     update_widget_visibility(app);
 }
 
@@ -1166,11 +1181,19 @@ struct Nudges {
     blink: bool,
     hydration: bool,
     posture: bool,
+    eyedrops: bool,
     evening: bool,
 }
 
 fn notify(app: &AppHandle, title: &str, body: &str) {
     let _ = app.notification().builder().title(title).body(body).show();
+}
+
+/// The real app icon, embedded from the icon file (Tauri's
+/// default_window_icon falls back to its own logo, so we set ours explicitly).
+fn app_image() -> tauri::image::Image<'static> {
+    tauri::image::Image::from_bytes(include_bytes!("../icons/128x128.png"))
+        .expect("embedded app icon")
 }
 
 fn run_timer(app: AppHandle) {
@@ -1248,6 +1271,15 @@ fn run_timer(app: AppHandle) {
                                 nudges.posture = true;
                             }
                         }
+                        if s.eyedrops_enabled {
+                            if t.eyedrops_remaining > 0 {
+                                t.eyedrops_remaining -= 1;
+                            }
+                            if t.eyedrops_remaining == 0 {
+                                t.eyedrops_remaining = s.eyedrops_interval_secs.max(1);
+                                nudges.eyedrops = true;
+                            }
+                        }
                     }
 
                     // Pre-break heads-up while still working.
@@ -1290,6 +1322,13 @@ fn run_timer(app: AppHandle) {
                     &app,
                     "Posture check",
                     "Sit back, relax your shoulders, screen about an arm's length away.",
+                );
+            }
+            if nudges.eyedrops {
+                notify(
+                    &app,
+                    "Eye drops 💧",
+                    "Time for artificial tears / eye drops.",
                 );
             }
             if nudges.evening {
@@ -1415,6 +1454,7 @@ pub fn run() {
                 idle: false,
                 hydration_remaining: settings.hydration_interval_secs.max(1),
                 posture_remaining: settings.posture_interval_secs.max(1),
+                eyedrops_remaining: settings.eyedrops_interval_secs.max(1),
                 evening_nudged_day: -1,
             };
             app.manage(AppState {
@@ -1445,7 +1485,7 @@ pub fn run() {
                 .build()?;
 
             TrayIconBuilder::with_id("main-tray")
-                .icon(app.default_window_icon().unwrap().clone())
+                .icon(app_image())
                 .tooltip("EyeCare")
                 .menu(&menu)
                 .show_menu_on_left_click(false)
@@ -1459,6 +1499,13 @@ pub fn run() {
                     _ => {}
                 })
                 .build(app)?;
+
+            // Set the real window icon (default_window_icon is Tauri's fallback).
+            for label in ["main", "widget"] {
+                if let Some(w) = app.get_webview_window(label) {
+                    let _ = w.set_icon(app_image());
+                }
+            }
 
             // Closing the main window hides it to the tray instead of quitting;
             // that's when the floating widget should appear (if enabled).

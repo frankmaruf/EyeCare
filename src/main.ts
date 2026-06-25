@@ -59,6 +59,8 @@ interface Settings {
   calmVisualsEnabled: boolean;
   accent: string;
   statsEnabled: boolean;
+  eyedropsEnabled: boolean;
+  eyedropsIntervalSecs: number;
 }
 
 interface DayBar {
@@ -146,6 +148,35 @@ const EYE_EXERCISES = [
   "Slow eye rolls: circle clockwise, then counter-clockwise.",
   "Palming: rub palms warm, cup over closed eyes, breathe.",
 ];
+
+// One-line "what is this / why" for each settings section.
+const CARD_DESC: Record<string, string> = {
+  Timing:
+    "The core 20-20-20 rule: how long you focus before a break, and how long the break lasts.",
+  Reminders:
+    "How the break shows up (gentle notification, a window, or a forced fullscreen overlay), and how postpone/skip behave.",
+  "Floating widget":
+    "A small always-on-top countdown you can keep on screen — handy when the main window is minimized to the tray.",
+  Startup: "Launch EyeCare automatically when you log in to your computer.",
+  "Global shortcuts":
+    "System-wide hotkeys that work even when EyeCare isn't the focused app — pause, skip, take a break, postpone, hide the widget.",
+  "Work hours":
+    "Only remind during the hours and weekdays you choose. Outside them the timer freezes, so it won't nag you off-hours.",
+  "Long breaks":
+    "Eyes need a quick look-away often; your body needs a longer rest occasionally. Every Nth break becomes a longer stand-up-and-move break.",
+  "Eye health":
+    "Optional wellbeing nudges while you work: blink fully (we blink less at screens), drink water, fix posture, use eye-drops, plus tips and guided exercises on the break screen.",
+  "Idle & presentation":
+    "Pause the timer when you step away (no input), and avoid interrupting screen-shares: hide the widget and soften the break when another app is fullscreen or your OS is in Do-Not-Disturb.",
+  Accessibility:
+    "Reduce or remove animations, or switch to a high-contrast colour palette for easier reading.",
+  Updates: "Check for and install newer versions of EyeCare.",
+  Backup:
+    "Save all your settings to a JSON file, or load them — useful for backups or moving to another machine.",
+  Theme: "Pick the accent colour used throughout the app.",
+  "Habit stats":
+    "A private, local-only record (no cloud, no telemetry) of breaks taken vs skipped, plus your daily streak, to help the habit stick.",
+};
 
 const app = document.querySelector<HTMLDivElement>("#app")!;
 
@@ -756,6 +787,16 @@ async function showSettings() {
               <input type="number" id="f-postureint" min="5" max="240" />
             </label>
             <label class="toggle-row">
+              <span>Eye-drops / artificial-tears reminder</span>
+              <span class="switch">
+                <input type="checkbox" id="f-eyedrops" />
+                <span class="slider"></span>
+              </span>
+            </label>
+            <label>Eye-drops every <span class="unit">(min)</span>
+              <input type="number" id="f-eyedropsint" min="5" max="480" />
+            </label>
+            <label class="toggle-row">
               <span>Evening warm-screen nudge</span>
               <span class="switch">
                 <input type="checkbox" id="f-evening" />
@@ -898,6 +939,7 @@ async function showSettings() {
 
       <div class="save-row">
         <button class="btn" id="btn-save">Save settings</button>
+        <button class="btn ghost" id="btn-back2">Back</button>
         <span class="saved" id="saved-msg"></span>
       </div>
     </main>
@@ -905,6 +947,18 @@ async function showSettings() {
 
   const $ = <T extends HTMLElement>(sel: string) =>
     document.querySelector<T>(sel)!;
+
+  // Add a short "what / why" line under each section heading.
+  document.querySelectorAll<HTMLElement>(".s-card").forEach((card) => {
+    const h2 = card.querySelector("h2");
+    const desc = h2 && CARD_DESC[h2.textContent?.trim() ?? ""];
+    if (h2 && desc) {
+      const p = document.createElement("p");
+      p.className = "card-desc";
+      p.textContent = desc;
+      h2.insertAdjacentElement("afterend", p);
+    }
+  });
 
   const c = mainSettings;
   const fWork = $<HTMLInputElement>("#f-work");
@@ -941,6 +995,8 @@ async function showSettings() {
   const fHydrationInt = $<HTMLInputElement>("#f-hydrationint");
   const fPosture = $<HTMLInputElement>("#f-posture");
   const fPostureInt = $<HTMLInputElement>("#f-postureint");
+  const fEyedrops = $<HTMLInputElement>("#f-eyedrops");
+  const fEyedropsInt = $<HTMLInputElement>("#f-eyedropsint");
   const fEvening = $<HTMLInputElement>("#f-evening");
   const fEveningHour = $<HTMLInputElement>("#f-eveninghour");
   const fTips = $<HTMLInputElement>("#f-tips");
@@ -1014,6 +1070,8 @@ async function showSettings() {
   fHydrationInt.value = String(Math.round(c.hydrationIntervalSecs / 60));
   fPosture.checked = c.postureEnabled;
   fPostureInt.value = String(Math.round(c.postureIntervalSecs / 60));
+  fEyedrops.checked = c.eyedropsEnabled;
+  fEyedropsInt.value = String(Math.round(c.eyedropsIntervalSecs / 60));
   fEvening.checked = c.eveningNudgeEnabled;
   fEveningHour.value = String(c.eveningHour);
   fTips.checked = c.tipsEnabled;
@@ -1042,6 +1100,9 @@ async function showSettings() {
   });
 
   $<HTMLButtonElement>("#btn-back").addEventListener("click", () =>
+    showDashboard(),
+  );
+  $<HTMLButtonElement>("#btn-back2").addEventListener("click", () =>
     showDashboard(),
   );
 
@@ -1086,6 +1147,8 @@ async function showSettings() {
       hydrationIntervalSecs: Number(fHydrationInt.value) * 60,
       postureEnabled: fPosture.checked,
       postureIntervalSecs: Number(fPostureInt.value) * 60,
+      eyedropsEnabled: fEyedrops.checked,
+      eyedropsIntervalSecs: Number(fEyedropsInt.value) * 60,
       eveningNudgeEnabled: fEvening.checked,
       eveningHour: Number(fEveningHour.value),
       tipsEnabled: fTips.checked,

@@ -804,6 +804,13 @@ body:has(.widget) {
   font-size: 0.82em;
 }
 
+.card-desc {
+  margin: -8px 0 16px;
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
 .s-card:nth-child(7) {
   animation-delay: 0.53s;
 }
