@@ -316,10 +316,14 @@ fn update_widget_visibility(app: &AppHandle) {
     let want = mode != "off" && !break_open && (mode == "always" || !main_visible);
     let is_visible = widget.is_visible().unwrap_or(false);
 
-    if want && !is_visible {
-        let _ = widget.show();
+    if want {
+        if !is_visible {
+            let _ = widget.show();
+        }
+        // Re-assert each tick: some compositors drop keep-above when another
+        // window takes focus.
         let _ = widget.set_always_on_top(true);
-    } else if !want && is_visible {
+    } else if is_visible {
         let _ = widget.hide();
     }
 }

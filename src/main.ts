@@ -153,12 +153,14 @@ async function renderWidget() {
 
   app.innerHTML = `
     <div class="widget">
-      <svg class="w-ring" viewBox="0 0 100 100">
-        <circle class="w-ring-bg" cx="50" cy="50" r="44"></circle>
-        <circle class="w-ring-fg" cx="50" cy="50" r="44" transform="rotate(-90 50 50)"></circle>
-      </svg>
-      <div class="w-center">
-        <div class="w-time" id="w-time">--:--</div>
+      <div class="w-dial">
+        <svg class="w-ring" viewBox="0 0 100 100">
+          <circle class="w-ring-bg" cx="50" cy="50" r="44"></circle>
+          <circle class="w-ring-fg" cx="50" cy="50" r="44" transform="rotate(-90 50 50)"></circle>
+        </svg>
+        <div class="w-center">
+          <div class="w-time" id="w-time">--:--</div>
+        </div>
       </div>
       <div class="w-actions">
         <button id="w-pause" title="Pause / Resume">⏸</button>
