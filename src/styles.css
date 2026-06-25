@@ -46,6 +46,21 @@ body {
   gap: 22px;
 }
 
+/* dashboard fills the window; ring + controls centre in the free space so a
+   large / maximized window doesn't look top-heavy */
+.dash:not(.settings-page) {
+  min-height: 100vh;
+}
+
+.dash-main {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 22px;
+}
+
 .dash-head {
   display: flex;
   align-items: center;

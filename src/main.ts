@@ -498,6 +498,7 @@ async function showDashboard() {
         <button class="icon-btn" id="btn-settings" title="Settings">${ICON_GEAR}</button>
       </header>
 
+      <div class="dash-main">
       <section class="ring-wrap">
         <svg class="ring" viewBox="0 0 280 280" width="220" height="220">
           <circle class="ring-bg" cx="140" cy="140" r="${RADIUS}"></circle>
@@ -515,6 +516,7 @@ async function showDashboard() {
         <button class="btn ghost" id="btn-take">Take break now</button>
         <button class="btn ghost" id="btn-skip">Skip</button>
       </section>
+      </div>
 
       <footer class="dash-foot">
         Closing this window keeps EyeCare running in the tray and (if enabled) shows the floating widget.

@@ -722,7 +722,9 @@ fn update_widget_visibility(app: &AppHandle) {
                     }
                 } else if minimized {
                     drop(ready);
-                    let _ = main.unminimize();
+                    // Hide straight to the tray. Don't unminimize first — that
+                    // briefly re-shows the window (a visible flicker) before it
+                    // hides. show_main_window() unminimizes on restore.
                     let _ = main.hide();
                     *state.main_shown.lock().unwrap() = false;
                     *state.main_ready.lock().unwrap() = false;

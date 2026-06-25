@@ -16,5 +16,5 @@ fn main() {
         }
     }
 
-    eyebreak_lib::run()
+    eyecare_lib::run()
 }

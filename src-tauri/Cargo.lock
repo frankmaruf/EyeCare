@@ -1018,7 +1018,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "eyebreak"
+name = "eyecare"
 version = "0.1.0"
 dependencies = [
  "chrono",
