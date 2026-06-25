@@ -835,6 +835,108 @@ body:has(.widget) {
   font-size: 0.9rem;
 }
 
+.s-card:nth-child(13) {
+  animation-delay: 1.01s;
+}
+.s-card:nth-child(14) {
+  animation-delay: 1.09s;
+}
+
+/* theme */
+input[type="color"] {
+  width: 100%;
+  height: 38px;
+  padding: 3px;
+  cursor: pointer;
+  background: var(--panel-solid);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.swatches {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  align-self: end;
+  padding-bottom: 4px;
+}
+
+.swatch {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.15);
+  cursor: pointer;
+  padding: 0;
+  transition: transform 0.12s;
+}
+
+.swatch:hover {
+  transform: scale(1.12);
+}
+
+/* habit stats */
+.stats-grid {
+  display: flex;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+
+.stat {
+  flex: 1;
+  text-align: center;
+  background: var(--panel-solid);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 6px;
+}
+
+.stat-num {
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+
+.stat-lbl {
+  font-size: 0.72rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-top: 2px;
+}
+
+.bars {
+  display: flex;
+  gap: 6px;
+  align-items: flex-end;
+  height: 72px;
+}
+
+.bar {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  height: 100%;
+  justify-content: flex-end;
+}
+
+.bar-fill {
+  width: 100%;
+  min-height: 3px;
+  background: linear-gradient(180deg, var(--accent), #2f8e89);
+  border-radius: 4px 4px 0 0;
+  transition: height 0.4s ease;
+}
+
+.bar span {
+  font-size: 0.62rem;
+  color: var(--muted);
+}
+
 /* ---------------- Accessibility ---------------- */
 
 /* Reduce motion: collapse animations/transitions to ~instant (not "none", so

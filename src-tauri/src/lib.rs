@@ -150,6 +150,16 @@ struct Settings {
     /// Calming animated visual on the break screen.
     #[serde(default = "d_true")]
     calm_visuals_enabled: bool,
+    /// Accent colour (hex).
+    #[serde(default = "d_accent")]
+    accent: String,
+    /// Track local break stats / streaks.
+    #[serde(default = "d_true")]
+    stats_enabled: bool,
+}
+
+fn d_accent() -> String {
+    "#4cc6c0".into()
 }
 
 fn d_hydration_interval() -> u64 {
@@ -255,6 +265,8 @@ impl Default for Settings {
             tips_enabled: true,
             exercises_enabled: false,
             calm_visuals_enabled: true,
+            accent: d_accent(),
+            stats_enabled: true,
         }
     }
 }
@@ -431,6 +443,120 @@ fn save_settings(app: &AppHandle, s: &Settings) {
     let path = settings_path(app);
     if let Ok(text) = serde_json::to_string_pretty(s) {
         let _ = std::fs::write(path, text);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Habit stats (local-only, no telemetry)
+// ---------------------------------------------------------------------------
+
+#[derive(Default, Serialize, Deserialize)]
+struct Stats {
+    days: std::collections::BTreeMap<String, DayStat>,
+}
+
+#[derive(Default, Serialize, Deserialize, Clone, Copy)]
+struct DayStat {
+    taken: u32,
+    skipped: u32,
+}
+
+fn stats_path(app: &AppHandle) -> std::path::PathBuf {
+    let dir = app.path().app_config_dir().expect("config dir");
+    std::fs::create_dir_all(&dir).ok();
+    dir.join("stats.json")
+}
+
+fn load_stats(app: &AppHandle) -> Stats {
+    std::fs::read_to_string(stats_path(app))
+        .ok()
+        .and_then(|t| serde_json::from_str(&t).ok())
+        .unwrap_or_default()
+}
+
+fn today_key() -> String {
+    chrono::Local::now().format("%Y-%m-%d").to_string()
+}
+
+fn record_break(app: &AppHandle, taken: bool) {
+    let enabled = app.state::<AppState>().settings.lock().unwrap().stats_enabled;
+    if !enabled {
+        return;
+    }
+    let mut st = load_stats(app);
+    let day = st.days.entry(today_key()).or_default();
+    if taken {
+        day.taken += 1;
+    } else {
+        day.skipped += 1;
+    }
+    if let Ok(text) = serde_json::to_string_pretty(&st) {
+        let _ = std::fs::write(stats_path(app), text);
+    }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DayBar {
+    date: String,
+    taken: u32,
+    skipped: u32,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct StatsSummary {
+    today_taken: u32,
+    today_skipped: u32,
+    total_taken: u32,
+    streak: u32,
+    last7: Vec<DayBar>,
+}
+
+#[tauri::command]
+fn get_stats(app: AppHandle) -> StatsSummary {
+    let st = load_stats(&app);
+    let total_taken: u32 = st.days.values().map(|d| d.taken).sum();
+    let today = today_key();
+    let today_stat = st.days.get(&today).copied().unwrap_or_default();
+    let base = chrono::Local::now().date_naive();
+
+    let mut last7 = Vec::new();
+    for i in (0..7).rev() {
+        let date = (base - chrono::Duration::days(i))
+            .format("%Y-%m-%d")
+            .to_string();
+        let d = st.days.get(&date).copied().unwrap_or_default();
+        last7.push(DayBar {
+            date,
+            taken: d.taken,
+            skipped: d.skipped,
+        });
+    }
+
+    // streak: consecutive days with a break taken, up to today (today not yet
+    // counted if it has no break, so a fresh morning doesn't reset it).
+    let mut streak = 0u32;
+    let mut i: i64 = if today_stat.taken == 0 { 1 } else { 0 };
+    loop {
+        let date = (base - chrono::Duration::days(i))
+            .format("%Y-%m-%d")
+            .to_string();
+        match st.days.get(&date) {
+            Some(d) if d.taken > 0 => {
+                streak += 1;
+                i += 1;
+            }
+            _ => break,
+        }
+    }
+
+    StatsSummary {
+        today_taken: today_stat.taken,
+        today_skipped: today_stat.skipped,
+        total_taken,
+        streak,
+        last7,
     }
 }
 
@@ -668,11 +794,16 @@ fn do_take_break(app: &AppHandle) {
 }
 
 fn do_skip(app: &AppHandle) {
+    let was_break;
     {
         let state = app.state::<AppState>();
         let s = state.settings.lock().unwrap().clone();
         let mut t = state.timer.lock().unwrap();
+        was_break = t.phase == Phase::Break;
         to_working(&mut t, &s);
+    }
+    if was_break {
+        record_break(app, false);
     }
     close_break_window(app);
     emit_tick(app);
@@ -1120,6 +1251,7 @@ fn run_timer(app: AppHandle) {
                     let _ = app.emit("timer:break-start", ());
                 }
                 Tick::BreakEnd => {
+                    record_break(&app, true);
                     close_break_window(&app);
                     let escalation = app
                         .state::<AppState>()
@@ -1337,7 +1469,8 @@ pub fn run() {
             timer_postpone,
             show_main,
             check_update,
-            install_update
+            install_update,
+            get_stats
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

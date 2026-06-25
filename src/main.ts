@@ -54,6 +54,22 @@ interface Settings {
   tipsEnabled: boolean;
   exercisesEnabled: boolean;
   calmVisualsEnabled: boolean;
+  accent: string;
+  statsEnabled: boolean;
+}
+
+interface DayBar {
+  date: string;
+  taken: number;
+  skipped: number;
+}
+
+interface StatsSummary {
+  todayTaken: number;
+  todaySkipped: number;
+  totalTaken: number;
+  streak: number;
+  last7: DayBar[];
 }
 
 interface TimerSnapshot {
@@ -135,6 +151,11 @@ function applyAppearance(s: Settings) {
   const root = document.documentElement;
   root.classList.toggle("reduce-motion", s.reduceMotion);
   root.classList.toggle("high-contrast", s.highContrast);
+  if (s.accent && !s.highContrast) {
+    root.style.setProperty("--accent", s.accent);
+  } else {
+    root.style.removeProperty("--accent");
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -832,6 +853,33 @@ async function showSettings() {
           </div>
           <p class="hint">Save your config to a JSON file, or load it on another machine.</p>
         </section>
+
+        <section class="card s-card">
+          <h2><span class="s-dot"></span> Theme</h2>
+          <div class="grid">
+            <label>Accent colour
+              <input type="color" id="f-accent" />
+            </label>
+            <div class="swatches" id="swatches"></div>
+          </div>
+        </section>
+
+        <section class="card s-card">
+          <h2><span class="s-dot"></span> Habit stats</h2>
+          <div class="stats-grid">
+            <div class="stat"><div class="stat-num" id="st-streak">–</div><div class="stat-lbl">day streak</div></div>
+            <div class="stat"><div class="stat-num" id="st-today">–</div><div class="stat-lbl">today</div></div>
+            <div class="stat"><div class="stat-num" id="st-total">–</div><div class="stat-lbl">total breaks</div></div>
+          </div>
+          <div class="bars" id="st-bars"></div>
+          <label class="toggle-row">
+            <span>Track habit stats (local only, no telemetry)</span>
+            <span class="switch">
+              <input type="checkbox" id="f-stats" />
+              <span class="slider"></span>
+            </span>
+          </label>
+        </section>
       </div>
 
       <div class="save-row">
@@ -882,6 +930,8 @@ async function showSettings() {
   const fTips = $<HTMLInputElement>("#f-tips");
   const fExercises = $<HTMLInputElement>("#f-exercises");
   const fCalm = $<HTMLInputElement>("#f-calm");
+  const fAccent = $<HTMLInputElement>("#f-accent");
+  const fStats = $<HTMLInputElement>("#f-stats");
   const savedMsg = $<HTMLSpanElement>("#saved-msg");
 
   // animated custom dropdowns (readable, unlike the native popup)
@@ -951,6 +1001,8 @@ async function showSettings() {
   fTips.checked = c.tipsEnabled;
   fExercises.checked = c.exercisesEnabled;
   fCalm.checked = c.calmVisualsEnabled;
+  fAccent.value = c.accent || "#4cc6c0";
+  fStats.checked = c.statsEnabled;
 
   $<HTMLButtonElement>("#btn-back").addEventListener("click", () =>
     showDashboard(),
@@ -999,6 +1051,8 @@ async function showSettings() {
       tipsEnabled: fTips.checked,
       exercisesEnabled: fExercises.checked,
       calmVisualsEnabled: fCalm.checked,
+      accent: fAccent.value,
+      statsEnabled: fStats.checked,
     };
     mainSettings = await invoke<Settings>("set_settings", { settings: next });
     fWWidth.value = String(mainSettings.widgetWidth);
@@ -1078,6 +1132,48 @@ async function showSettings() {
       backupMsg.textContent = "Invalid settings file";
     }
   });
+
+  // --- theme swatches (live preview) ---
+  const PRESETS = [
+    "#4cc6c0",
+    "#5b8def",
+    "#e2725b",
+    "#a78bfa",
+    "#34d399",
+    "#f59e0b",
+  ];
+  const sw = $<HTMLDivElement>("#swatches");
+  for (const hex of PRESETS) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "swatch";
+    b.style.background = hex;
+    b.addEventListener("click", () => {
+      fAccent.value = hex;
+      document.documentElement.style.setProperty("--accent", hex);
+    });
+    sw.appendChild(b);
+  }
+  fAccent.addEventListener("input", () =>
+    document.documentElement.style.setProperty("--accent", fAccent.value),
+  );
+
+  // --- habit stats ---
+  try {
+    const stats = await invoke<StatsSummary>("get_stats");
+    $("#st-streak").textContent = String(stats.streak);
+    $("#st-today").textContent = String(stats.todayTaken);
+    $("#st-total").textContent = String(stats.totalTaken);
+    const max = Math.max(1, ...stats.last7.map((d) => d.taken));
+    $("#st-bars").innerHTML = stats.last7
+      .map((d) => {
+        const h = Math.round((d.taken / max) * 100);
+        return `<div class="bar" title="${d.date}: ${d.taken} taken, ${d.skipped} skipped"><div class="bar-fill" style="height:${h}%"></div><span>${d.date.slice(5)}</span></div>`;
+      })
+      .join("");
+  } catch {
+    /* stats unavailable */
+  }
 }
 
 async function renderMainWindow() {
