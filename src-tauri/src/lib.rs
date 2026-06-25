@@ -90,6 +90,52 @@ struct Settings {
     work_start: String,
     #[serde(default = "d_work_end")]
     work_end: String,
+
+    // --- v1.1 ---
+    /// Pause the timer when there's been no input for a while.
+    #[serde(default = "d_true")]
+    idle_pause_enabled: bool,
+    /// Idle seconds before pausing.
+    #[serde(default = "d_idle_threshold")]
+    idle_threshold_secs: u64,
+    /// Make every Nth break a longer "stand up & move" break.
+    #[serde(default)]
+    long_break_enabled: bool,
+    /// A long break every N breaks.
+    #[serde(default = "d_long_break_every")]
+    long_break_every: u32,
+    /// Long-break length, seconds.
+    #[serde(default = "d_long_break_secs")]
+    long_break_secs: u64,
+    /// Periodic "blink fully" nudge while working.
+    #[serde(default)]
+    blink_enabled: bool,
+    /// Seconds between blink nudges.
+    #[serde(default = "d_blink_interval")]
+    blink_interval_secs: u64,
+    /// Disable animations.
+    #[serde(default)]
+    reduce_motion: bool,
+    /// High-contrast palette.
+    #[serde(default)]
+    high_contrast: bool,
+    /// Suppress the forced overlay when another app is fullscreen
+    /// (presentation / screen-share / video).
+    #[serde(default = "d_true")]
+    suppress_on_fullscreen: bool,
+}
+
+fn d_idle_threshold() -> u64 {
+    120
+}
+fn d_long_break_every() -> u32 {
+    3
+}
+fn d_long_break_secs() -> u64 {
+    5 * 60
+}
+fn d_blink_interval() -> u64 {
+    5 * 60
 }
 
 fn d_true() -> bool {
@@ -153,6 +199,16 @@ impl Default for Settings {
             work_hours_enabled: false,
             work_start: d_work_start(),
             work_end: d_work_end(),
+            idle_pause_enabled: true,
+            idle_threshold_secs: d_idle_threshold(),
+            long_break_enabled: false,
+            long_break_every: d_long_break_every(),
+            long_break_secs: d_long_break_secs(),
+            blink_enabled: false,
+            blink_interval_secs: d_blink_interval(),
+            reduce_motion: false,
+            high_contrast: false,
+            suppress_on_fullscreen: true,
         }
     }
 }
@@ -179,6 +235,10 @@ fn clamp_settings(mut s: Settings) -> Settings {
     if !matches!(s.widget_shape.as_str(), "round" | "squircle" | "square") {
         s.widget_shape = "squircle".into();
     }
+    s.idle_threshold_secs = s.idle_threshold_secs.clamp(30, 600);
+    s.long_break_every = s.long_break_every.clamp(1, 20);
+    s.long_break_secs = s.long_break_secs.clamp(60, 3600);
+    s.blink_interval_secs = s.blink_interval_secs.clamp(30, 3600);
     s
 }
 
@@ -200,6 +260,14 @@ struct TimerState {
     postpones_used: u32,
     /// Whether the pre-break warning already fired this work cycle.
     warned: bool,
+    /// Count of breaks started (drives the long-break cadence).
+    breaks_done: u32,
+    /// The current break is a long break.
+    is_long: bool,
+    /// Countdown to the next blink nudge while working.
+    blink_remaining: u64,
+    /// Currently frozen because the user is idle.
+    idle: bool,
 }
 
 #[derive(Clone, Copy)]
@@ -234,11 +302,14 @@ struct TimerSnapshot {
     paused: bool,
     postpones_used: u32,
     max_postpones: u32,
+    is_long: bool,
+    idle: bool,
 }
 
 fn snapshot(t: &TimerState, s: &Settings) -> TimerSnapshot {
     let total = match t.phase {
         Phase::Working => s.work_interval_secs,
+        Phase::Break if t.is_long => s.long_break_secs,
         Phase::Break => s.break_length_secs,
     };
     TimerSnapshot {
@@ -248,6 +319,8 @@ fn snapshot(t: &TimerState, s: &Settings) -> TimerSnapshot {
         paused: t.paused,
         postpones_used: t.postpones_used,
         max_postpones: s.max_postpones,
+        is_long: t.is_long,
+        idle: t.idle,
     }
 }
 
@@ -256,11 +329,22 @@ fn to_working(t: &mut TimerState, s: &Settings) {
     t.remaining = s.work_interval_secs;
     t.warned = false;
     t.postpones_used = 0;
+    t.is_long = false;
+    t.blink_remaining = s.blink_interval_secs.max(1);
 }
 
 fn to_break(t: &mut TimerState, s: &Settings) {
+    t.breaks_done = t.breaks_done.wrapping_add(1);
+    let long = s.long_break_enabled
+        && s.long_break_every > 0
+        && t.breaks_done % s.long_break_every == 0;
+    t.is_long = long;
     t.phase = Phase::Break;
-    t.remaining = s.break_length_secs;
+    t.remaining = if long {
+        s.long_break_secs
+    } else {
+        s.break_length_secs
+    };
     t.warned = false;
 }
 
@@ -300,11 +384,21 @@ fn save_settings(app: &AppHandle, s: &Settings) {
 
 /// Open the break reminder window (or fire a notification for "gentle").
 fn start_break(app: &AppHandle) {
-    let (escalation, sound) = {
+    let (mut escalation, sound, suppress) = {
         let state = app.state::<AppState>();
         let s = state.settings.lock().unwrap();
-        (s.escalation.clone(), s.sound_enabled)
+        (
+            s.escalation.clone(),
+            s.sound_enabled,
+            s.suppress_on_fullscreen,
+        )
     };
+
+    // Don't pop a window over a presentation / screen-share / fullscreen video:
+    // downgrade to a gentle notification when another app is fullscreen.
+    if suppress && escalation != "gentle" && another_app_fullscreen() {
+        escalation = "gentle".into();
+    }
 
     // Gentle level: just a notification, no window grab.
     if escalation == "gentle" {
@@ -560,6 +654,76 @@ fn within_work_hours(s: &Settings) -> bool {
     }
 }
 
+/// Seconds since the last keyboard/mouse input (0 if it can't be read).
+/// Idle detection needs the X11 screensaver extension; on setups without it
+/// (e.g. some XWayland displays) we disable it after the first failure so it
+/// degrades gracefully instead of spamming and re-trying every second.
+fn idle_seconds() -> u64 {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    static UNAVAILABLE: AtomicBool = AtomicBool::new(false);
+    if UNAVAILABLE.load(Ordering::Relaxed) {
+        return 0;
+    }
+    match user_idle::UserIdle::get_time() {
+        Ok(t) => t.as_seconds(),
+        Err(_) => {
+            UNAVAILABLE.store(true, Ordering::Relaxed);
+            0
+        }
+    }
+}
+
+/// Whether some other app currently has a fullscreen window (a proxy for
+/// "presenting / screen-sharing / watching video"). Linux/X11 only.
+#[cfg(target_os = "linux")]
+fn another_app_fullscreen() -> bool {
+    use x11rb::connection::Connection;
+    use x11rb::protocol::xproto::{AtomEnum, ConnectionExt};
+
+    let probe = || -> Result<bool, Box<dyn std::error::Error>> {
+        let (conn, screen_num) = x11rb::connect(None)?;
+        let root = conn.setup().roots[screen_num].root;
+        let atom = |name: &[u8]| -> Result<u32, Box<dyn std::error::Error>> {
+            Ok(conn.intern_atom(false, name)?.reply()?.atom)
+        };
+        let active_atom = atom(b"_NET_ACTIVE_WINDOW")?;
+        let state_atom = atom(b"_NET_WM_STATE")?;
+        let fs_atom = atom(b"_NET_WM_STATE_FULLSCREEN")?;
+
+        let active = conn
+            .get_property(false, root, active_atom, AtomEnum::WINDOW, 0, 1)?
+            .reply()?;
+        let win = match active.value32().and_then(|mut it| it.next()) {
+            Some(w) if w != 0 => w,
+            _ => return Ok(false),
+        };
+
+        let st = conn
+            .get_property(false, win, state_atom, AtomEnum::ATOM, 0, 64)?
+            .reply()?;
+        let is_fs = st
+            .value32()
+            .map(|mut it| it.any(|a| a == fs_atom))
+            .unwrap_or(false);
+        if !is_fs {
+            return Ok(false);
+        }
+
+        // Exclude our own break overlay (WM_CLASS contains "eyebreak").
+        let cls = conn
+            .get_property(false, win, AtomEnum::WM_CLASS, AtomEnum::STRING, 0, 256)?
+            .reply()?;
+        let cls_str = String::from_utf8_lossy(&cls.value).to_lowercase();
+        Ok(!cls_str.contains("eyebreak"))
+    };
+    probe().unwrap_or(false)
+}
+
+#[cfg(not(target_os = "linux"))]
+fn another_app_fullscreen() -> bool {
+    false
+}
+
 /// Enable/disable launch-at-login to match the setting.
 #[cfg(desktop)]
 fn apply_autostart(app: &AppHandle) {
@@ -691,19 +855,35 @@ fn run_timer(app: AppHandle) {
         loop {
             ticker.tick().await;
 
-            let action = {
+            let (action, do_blink) = {
                 let state = app.state::<AppState>();
                 let s = state.settings.lock().unwrap().clone();
                 let mut t = state.timer.lock().unwrap();
 
-                // Freeze the countdown while paused or outside work hours.
-                if t.paused || !within_work_hours(&s) {
-                    Tick::None
+                let idle_now =
+                    s.idle_pause_enabled && idle_seconds() >= s.idle_threshold_secs;
+                t.idle = idle_now;
+
+                // Freeze while paused, idle, or outside work hours.
+                if t.paused || idle_now || !within_work_hours(&s) {
+                    (Tick::None, false)
                 } else {
                     let mut action = Tick::None;
+                    let mut do_blink = false;
 
                     if t.remaining > 0 {
                         t.remaining -= 1;
+                    }
+
+                    // Blink nudge while working.
+                    if t.phase == Phase::Working && s.blink_enabled {
+                        if t.blink_remaining > 0 {
+                            t.blink_remaining -= 1;
+                        }
+                        if t.blink_remaining == 0 {
+                            t.blink_remaining = s.blink_interval_secs.max(1);
+                            do_blink = true;
+                        }
                     }
 
                     // Pre-break heads-up while still working.
@@ -730,9 +910,19 @@ fn run_timer(app: AppHandle) {
                         }
                     }
 
-                    action
+                    (action, do_blink)
                 }
             };
+
+            if do_blink {
+                let _ = app
+                    .notification()
+                    .builder()
+                    .title("Blink 👀")
+                    .body("Blink slowly and fully a few times.")
+                    .show();
+                let _ = app.emit("timer:blink", ());
+            }
 
             match action {
                 Tick::Prewarn(secs) => {
@@ -840,6 +1030,10 @@ pub fn run() {
                 paused: false,
                 postpones_used: 0,
                 warned: false,
+                breaks_done: 0,
+                is_long: false,
+                blink_remaining: settings.blink_interval_secs.max(1),
+                idle: false,
             };
             app.manage(AppState {
                 settings: Mutex::new(settings),

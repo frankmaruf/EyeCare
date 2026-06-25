@@ -680,6 +680,52 @@ body:has(.widget) {
   font-size: 0.82em;
 }
 
+.s-card:nth-child(7) {
+  animation-delay: 0.53s;
+}
+.s-card:nth-child(8) {
+  animation-delay: 0.61s;
+}
+.s-card:nth-child(9) {
+  animation-delay: 0.69s;
+}
+.s-card:nth-child(10) {
+  animation-delay: 0.77s;
+}
+
+/* ---------------- Accessibility ---------------- */
+
+/* Reduce motion: collapse animations/transitions to ~instant (not "none", so
+   elements that animate from opacity:0 still end up visible). */
+:root.reduce-motion *,
+:root.reduce-motion *::before,
+:root.reduce-motion *::after {
+  animation-duration: 0.001s !important;
+  animation-delay: 0s !important;
+  transition-duration: 0.001s !important;
+}
+
+/* High contrast: stronger palette + solid backgrounds. */
+:root.high-contrast {
+  --bg: #000000;
+  --panel: #0a1120;
+  --panel-solid: #0a1120;
+  --border: #6076a0;
+  --text: #ffffff;
+  --muted: #cdd8ea;
+  --accent: #66e6dd;
+  --accent-2: #9bc1ff;
+}
+
+:root.high-contrast body {
+  background: #000;
+}
+
+:root.high-contrast .card,
+:root.high-contrast .cselect-list {
+  backdrop-filter: none;
+}
+
 @keyframes cardIn {
   from {
     opacity: 0;

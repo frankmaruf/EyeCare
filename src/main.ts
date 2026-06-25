@@ -35,6 +35,16 @@ interface Settings {
   workHoursEnabled: boolean;
   workStart: string;
   workEnd: string;
+  idlePauseEnabled: boolean;
+  idleThresholdSecs: number;
+  longBreakEnabled: boolean;
+  longBreakEvery: number;
+  longBreakSecs: number;
+  blinkEnabled: boolean;
+  blinkIntervalSecs: number;
+  reduceMotion: boolean;
+  highContrast: boolean;
+  suppressOnFullscreen: boolean;
 }
 
 interface TimerSnapshot {
@@ -44,6 +54,8 @@ interface TimerSnapshot {
   paused: boolean;
   postponesUsed: number;
   maxPostpones: number;
+  isLong: boolean;
+  idle: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -91,18 +103,25 @@ function beep() {
 
 const app = document.querySelector<HTMLDivElement>("#app")!;
 
+// Accessibility: reflected on <html> so it applies to every window/view.
+function applyAppearance(s: Settings) {
+  const root = document.documentElement;
+  root.classList.toggle("reduce-motion", s.reduceMotion);
+  root.classList.toggle("high-contrast", s.highContrast);
+}
+
 // ---------------------------------------------------------------------------
 // Break window view (loaded at index.html#break)
 // ---------------------------------------------------------------------------
 
-function renderBreak() {
+async function renderBreak() {
   if (location.hash.includes("sound=1")) beep();
 
   app.innerHTML = `
     <div class="break-screen" data-tauri-drag-region>
       <p class="break-eyebrow">EyeBreak</p>
-      <h1 class="break-title">Look ~20 feet away</h1>
-      <p class="break-sub">Relax your eyes — let your focus drift to the distance.</p>
+      <h1 class="break-title" id="break-title">Look ~20 feet away</h1>
+      <p class="break-sub" id="break-sub">Relax your eyes — let your focus drift to the distance.</p>
       <div class="break-count" id="break-count">00:20</div>
       <div class="break-actions">
         <button class="btn ghost" id="break-postpone">Postpone</button>
@@ -112,6 +131,8 @@ function renderBreak() {
     </div>
   `;
 
+  const titleEl = document.querySelector<HTMLHeadingElement>("#break-title")!;
+  const subEl = document.querySelector<HTMLParagraphElement>("#break-sub")!;
   const countEl = document.querySelector<HTMLDivElement>("#break-count")!;
   const noteEl = document.querySelector<HTMLParagraphElement>("#break-note")!;
   const skipBtn = document.querySelector<HTMLButtonElement>("#break-skip")!;
@@ -126,15 +147,25 @@ function renderBreak() {
     }
   });
 
-  listen<TimerSnapshot>("timer:tick", (e) => {
-    const t = e.payload;
-    if (t.phase === "break") {
-      countEl.textContent = fmt(t.remaining);
+  const update = (t: TimerSnapshot) => {
+    if (t.phase !== "break") return;
+    countEl.textContent = fmt(t.remaining);
+    if (t.isLong) {
+      titleEl.textContent = "Stand up & move";
+      subEl.textContent =
+        "Walk around, stretch, and look out a window at the distance.";
+    } else {
+      titleEl.textContent = "Look ~20 feet away";
+      subEl.textContent =
+        "Relax your eyes — let your focus drift to the distance.";
     }
     if (t.maxPostpones > 0) {
       postBtn.disabled = t.postponesUsed >= t.maxPostpones;
     }
-  });
+  };
+
+  update(await invoke<TimerSnapshot>("get_timer"));
+  listen<TimerSnapshot>("timer:tick", (e) => update(e.payload));
 
   // The backend closes this window on break-end / skip / postpone.
 }
@@ -397,15 +428,20 @@ async function showDashboard() {
   const applyTick = (t: TimerSnapshot) => {
     paused = t.paused;
     btnPause.textContent = t.paused ? "Resume" : "Pause";
-    phaseTag.textContent = t.paused
-      ? "paused"
-      : t.phase === "break"
-        ? "break"
-        : "working";
-    phaseTag.dataset.phase = t.paused ? "paused" : t.phase;
+    phaseTag.textContent = t.idle
+      ? "idle"
+      : t.paused
+        ? "paused"
+        : t.phase === "break"
+          ? "break"
+          : "working";
+    phaseTag.dataset.phase = t.idle || t.paused ? "paused" : t.phase;
     ringTime.textContent = fmt(t.remaining);
-    ringLabel.textContent =
-      t.phase === "break" ? "break time left" : "until next break";
+    ringLabel.textContent = t.idle
+      ? "paused — you're away"
+      : t.phase === "break"
+        ? "break time left"
+        : "until next break";
     setRing(ringFg, t.remaining, t.total);
   };
 
@@ -575,6 +611,84 @@ async function showSettings() {
             <label>End<input type="time" id="f-wend" /></label>
           </div>
         </section>
+
+        <section class="card s-card">
+          <h2><span class="s-dot"></span> Long breaks</h2>
+          <div class="grid">
+            <label class="toggle-row">
+              <span>Add a longer break periodically</span>
+              <span class="switch">
+                <input type="checkbox" id="f-long" />
+                <span class="slider"></span>
+              </span>
+            </label>
+            <label>Every <span class="unit">(breaks)</span>
+              <input type="number" id="f-longevery" min="1" max="20" />
+            </label>
+            <label>Long length <span class="unit">(min)</span>
+              <input type="number" id="f-longlen" min="1" max="60" />
+            </label>
+          </div>
+        </section>
+
+        <section class="card s-card">
+          <h2><span class="s-dot"></span> Eye health</h2>
+          <div class="grid">
+            <label class="toggle-row">
+              <span>Blink reminders</span>
+              <span class="switch">
+                <input type="checkbox" id="f-blink" />
+                <span class="slider"></span>
+              </span>
+            </label>
+            <label>Blink every <span class="unit">(min)</span>
+              <input type="number" id="f-blinkint" min="1" max="60" />
+            </label>
+          </div>
+        </section>
+
+        <section class="card s-card">
+          <h2><span class="s-dot"></span> Idle &amp; presentation</h2>
+          <div class="grid">
+            <label class="toggle-row">
+              <span>Pause when I'm away (idle)</span>
+              <span class="switch">
+                <input type="checkbox" id="f-idle" />
+                <span class="slider"></span>
+              </span>
+            </label>
+            <label>Idle after <span class="unit">(sec)</span>
+              <input type="number" id="f-idlethresh" min="30" max="600" />
+            </label>
+            <label class="toggle-row">
+              <span>Suppress break over fullscreen apps</span>
+              <span class="switch">
+                <input type="checkbox" id="f-suppress" />
+                <span class="slider"></span>
+              </span>
+            </label>
+          </div>
+        </section>
+
+        <section class="card s-card">
+          <h2><span class="s-dot"></span> Accessibility</h2>
+          <div class="grid">
+            <label class="toggle-row">
+              <span>Reduce motion (no animations)</span>
+              <span class="switch">
+                <input type="checkbox" id="f-reduce" />
+                <span class="slider"></span>
+              </span>
+            </label>
+            <label class="toggle-row">
+              <span>High contrast</span>
+              <span class="switch">
+                <input type="checkbox" id="f-contrast" />
+                <span class="slider"></span>
+              </span>
+            </label>
+          </div>
+        </section>
       </div>
 
       <div class="save-row">
@@ -606,6 +720,16 @@ async function showSettings() {
   const fWh = $<HTMLInputElement>("#f-wh");
   const fWStart = $<HTMLInputElement>("#f-wstart");
   const fWEnd = $<HTMLInputElement>("#f-wend");
+  const fLong = $<HTMLInputElement>("#f-long");
+  const fLongEvery = $<HTMLInputElement>("#f-longevery");
+  const fLongLen = $<HTMLInputElement>("#f-longlen");
+  const fBlink = $<HTMLInputElement>("#f-blink");
+  const fBlinkInt = $<HTMLInputElement>("#f-blinkint");
+  const fIdle = $<HTMLInputElement>("#f-idle");
+  const fIdleThresh = $<HTMLInputElement>("#f-idlethresh");
+  const fSuppress = $<HTMLInputElement>("#f-suppress");
+  const fReduce = $<HTMLInputElement>("#f-reduce");
+  const fContrast = $<HTMLInputElement>("#f-contrast");
   const savedMsg = $<HTMLSpanElement>("#saved-msg");
 
   // animated custom dropdowns (readable, unlike the native popup)
@@ -656,6 +780,16 @@ async function showSettings() {
   fWh.checked = c.workHoursEnabled;
   fWStart.value = c.workStart;
   fWEnd.value = c.workEnd;
+  fLong.checked = c.longBreakEnabled;
+  fLongEvery.value = String(c.longBreakEvery);
+  fLongLen.value = String(Math.round(c.longBreakSecs / 60));
+  fBlink.checked = c.blinkEnabled;
+  fBlinkInt.value = String(Math.round(c.blinkIntervalSecs / 60));
+  fIdle.checked = c.idlePauseEnabled;
+  fIdleThresh.value = String(c.idleThresholdSecs);
+  fSuppress.checked = c.suppressOnFullscreen;
+  fReduce.checked = c.reduceMotion;
+  fContrast.checked = c.highContrast;
 
   $<HTMLButtonElement>("#btn-back").addEventListener("click", () =>
     showDashboard(),
@@ -685,6 +819,16 @@ async function showSettings() {
       workHoursEnabled: fWh.checked,
       workStart: fWStart.value || "09:00",
       workEnd: fWEnd.value || "17:00",
+      longBreakEnabled: fLong.checked,
+      longBreakEvery: Number(fLongEvery.value),
+      longBreakSecs: Number(fLongLen.value) * 60,
+      blinkEnabled: fBlink.checked,
+      blinkIntervalSecs: Number(fBlinkInt.value) * 60,
+      idlePauseEnabled: fIdle.checked,
+      idleThresholdSecs: Number(fIdleThresh.value),
+      suppressOnFullscreen: fSuppress.checked,
+      reduceMotion: fReduce.checked,
+      highContrast: fContrast.checked,
     };
     mainSettings = await invoke<Settings>("set_settings", { settings: next });
     fWWidth.value = String(mainSettings.widgetWidth);
@@ -717,6 +861,10 @@ document.addEventListener("click", (e) => {
 });
 
 window.addEventListener("DOMContentLoaded", () => {
+  // Apply accessibility prefs to every window, and keep them in sync.
+  invoke<Settings>("get_settings").then(applyAppearance).catch(() => {});
+  listen<Settings>("settings:changed", (e) => applyAppearance(e.payload));
+
   if (location.hash.startsWith("#break")) {
     renderBreak();
   } else if (location.hash.startsWith("#widget")) {
