@@ -45,6 +45,13 @@ interface Settings {
   reduceMotion: boolean;
   highContrast: boolean;
   suppressOnFullscreen: boolean;
+  hydrationEnabled: boolean;
+  hydrationIntervalSecs: number;
+  postureEnabled: boolean;
+  postureIntervalSecs: number;
+  eveningNudgeEnabled: boolean;
+  eveningHour: number;
+  tipsEnabled: boolean;
 }
 
 interface TimerSnapshot {
@@ -101,6 +108,17 @@ function beep() {
   }
 }
 
+const EYE_TIPS = [
+  "20-20-20: every 20 min, look ~20 ft away for 20 sec.",
+  "Blink fully and often — screens cut your blink rate in half.",
+  "Keep your screen about an arm's length away.",
+  "Put the top of your screen at or just below eye level.",
+  "Cut glare: avoid bright lights or windows behind your screen.",
+  "Match screen brightness to the room — not too bright in the dark.",
+  "Sip water through the day — hydration eases dry eyes.",
+  "Book a yearly eye check-up.",
+];
+
 const app = document.querySelector<HTMLDivElement>("#app")!;
 
 // Accessibility: reflected on <html> so it applies to every window/view.
@@ -116,6 +134,7 @@ function applyAppearance(s: Settings) {
 
 async function renderBreak() {
   if (location.hash.includes("sound=1")) beep();
+  const s = await invoke<Settings>("get_settings").catch(() => null);
 
   app.innerHTML = `
     <div class="break-screen" data-tauri-drag-region>
@@ -128,8 +147,15 @@ async function renderBreak() {
         <button class="btn" id="break-skip">Skip break</button>
       </div>
       <p class="break-note" id="break-note"></p>
+      <p class="break-tip" id="break-tip"></p>
     </div>
   `;
+
+  if (s?.tipsEnabled !== false) {
+    const tip = EYE_TIPS[Math.floor(Math.random() * EYE_TIPS.length)];
+    document.querySelector<HTMLParagraphElement>("#break-tip")!.textContent =
+      `💡 ${tip}`;
+  }
 
   const titleEl = document.querySelector<HTMLHeadingElement>("#break-title")!;
   const subEl = document.querySelector<HTMLParagraphElement>("#break-sub")!;
@@ -644,6 +670,43 @@ async function showSettings() {
             <label>Blink every <span class="unit">(min)</span>
               <input type="number" id="f-blinkint" min="1" max="60" />
             </label>
+            <label class="toggle-row">
+              <span>Hydration reminders</span>
+              <span class="switch">
+                <input type="checkbox" id="f-hydration" />
+                <span class="slider"></span>
+              </span>
+            </label>
+            <label>Hydrate every <span class="unit">(min)</span>
+              <input type="number" id="f-hydrationint" min="5" max="240" />
+            </label>
+            <label class="toggle-row">
+              <span>Posture / distance reminders</span>
+              <span class="switch">
+                <input type="checkbox" id="f-posture" />
+                <span class="slider"></span>
+              </span>
+            </label>
+            <label>Posture every <span class="unit">(min)</span>
+              <input type="number" id="f-postureint" min="5" max="240" />
+            </label>
+            <label class="toggle-row">
+              <span>Evening warm-screen nudge</span>
+              <span class="switch">
+                <input type="checkbox" id="f-evening" />
+                <span class="slider"></span>
+              </span>
+            </label>
+            <label>Evening after <span class="unit">(hour 0–23)</span>
+              <input type="number" id="f-eveninghour" min="0" max="23" />
+            </label>
+            <label class="toggle-row">
+              <span>Show tips on the break screen</span>
+              <span class="switch">
+                <input type="checkbox" id="f-tips" />
+                <span class="slider"></span>
+              </span>
+            </label>
           </div>
         </section>
 
@@ -702,6 +765,22 @@ async function showSettings() {
             manager.
           </p>
         </section>
+
+        <section class="card s-card">
+          <h2><span class="s-dot"></span> Backup</h2>
+          <div class="update-row">
+            <button class="btn ghost" id="btn-export">Export settings</button>
+            <button class="btn ghost" id="btn-import">Import settings</button>
+            <input
+              type="file"
+              id="import-file"
+              accept="application/json,.json"
+              style="display: none"
+            />
+            <span class="update-msg" id="backup-msg"></span>
+          </div>
+          <p class="hint">Save your config to a JSON file, or load it on another machine.</p>
+        </section>
       </div>
 
       <div class="save-row">
@@ -743,6 +822,13 @@ async function showSettings() {
   const fSuppress = $<HTMLInputElement>("#f-suppress");
   const fReduce = $<HTMLInputElement>("#f-reduce");
   const fContrast = $<HTMLInputElement>("#f-contrast");
+  const fHydration = $<HTMLInputElement>("#f-hydration");
+  const fHydrationInt = $<HTMLInputElement>("#f-hydrationint");
+  const fPosture = $<HTMLInputElement>("#f-posture");
+  const fPostureInt = $<HTMLInputElement>("#f-postureint");
+  const fEvening = $<HTMLInputElement>("#f-evening");
+  const fEveningHour = $<HTMLInputElement>("#f-eveninghour");
+  const fTips = $<HTMLInputElement>("#f-tips");
   const savedMsg = $<HTMLSpanElement>("#saved-msg");
 
   // animated custom dropdowns (readable, unlike the native popup)
@@ -803,6 +889,13 @@ async function showSettings() {
   fSuppress.checked = c.suppressOnFullscreen;
   fReduce.checked = c.reduceMotion;
   fContrast.checked = c.highContrast;
+  fHydration.checked = c.hydrationEnabled;
+  fHydrationInt.value = String(Math.round(c.hydrationIntervalSecs / 60));
+  fPosture.checked = c.postureEnabled;
+  fPostureInt.value = String(Math.round(c.postureIntervalSecs / 60));
+  fEvening.checked = c.eveningNudgeEnabled;
+  fEveningHour.value = String(c.eveningHour);
+  fTips.checked = c.tipsEnabled;
 
   $<HTMLButtonElement>("#btn-back").addEventListener("click", () =>
     showDashboard(),
@@ -842,6 +935,13 @@ async function showSettings() {
       suppressOnFullscreen: fSuppress.checked,
       reduceMotion: fReduce.checked,
       highContrast: fContrast.checked,
+      hydrationEnabled: fHydration.checked,
+      hydrationIntervalSecs: Number(fHydrationInt.value) * 60,
+      postureEnabled: fPosture.checked,
+      postureIntervalSecs: Number(fPostureInt.value) * 60,
+      eveningNudgeEnabled: fEvening.checked,
+      eveningHour: Number(fEveningHour.value),
+      tipsEnabled: fTips.checked,
     };
     mainSettings = await invoke<Settings>("set_settings", { settings: next });
     fWWidth.value = String(mainSettings.widgetWidth);
@@ -883,6 +983,42 @@ async function showSettings() {
     } catch {
       updMsg.textContent = "Update check failed (no release published yet)";
       updBtn.disabled = false;
+    }
+  });
+
+  // --- backup: export / import ---
+  const backupMsg = $<HTMLSpanElement>("#backup-msg");
+  $<HTMLButtonElement>("#btn-export").addEventListener("click", async () => {
+    const cfg = await invoke<Settings>("get_settings");
+    const blob = new Blob([JSON.stringify(cfg, null, 2)], {
+      type: "application/json",
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "eyebreak-settings.json";
+    a.click();
+    URL.revokeObjectURL(url);
+    backupMsg.textContent = "Exported ✓";
+    setTimeout(() => (backupMsg.textContent = ""), 1800);
+  });
+  const importFile = $<HTMLInputElement>("#import-file");
+  $<HTMLButtonElement>("#btn-import").addEventListener("click", () =>
+    importFile.click(),
+  );
+  importFile.addEventListener("change", async () => {
+    const file = importFile.files?.[0];
+    importFile.value = "";
+    if (!file) return;
+    try {
+      const incoming = JSON.parse(await file.text()) as Partial<Settings>;
+      const merged = { ...mainSettings, ...incoming } as Settings;
+      mainSettings = await invoke<Settings>("set_settings", {
+        settings: merged,
+      });
+      showSettings(); // re-render with the imported values
+    } catch {
+      backupMsg.textContent = "Invalid settings file";
     }
   });
 }

@@ -9,7 +9,7 @@
 use std::sync::Mutex;
 use std::time::Duration;
 
-use chrono::Timelike;
+use chrono::{Datelike, Timelike};
 use serde::{Deserialize, Serialize};
 use tauri::{
     menu::{MenuBuilder, MenuItemBuilder},
@@ -123,6 +123,37 @@ struct Settings {
     /// (presentation / screen-share / video).
     #[serde(default = "d_true")]
     suppress_on_fullscreen: bool,
+
+    // --- v1.2 eye-health extras ---
+    /// Periodic "drink water" nudge while working.
+    #[serde(default)]
+    hydration_enabled: bool,
+    #[serde(default = "d_hydration_interval")]
+    hydration_interval_secs: u64,
+    /// Periodic posture / screen-distance nudge while working.
+    #[serde(default)]
+    posture_enabled: bool,
+    #[serde(default = "d_posture_interval")]
+    posture_interval_secs: u64,
+    /// Once-per-evening warm-screen / dark-room nudge.
+    #[serde(default)]
+    evening_nudge_enabled: bool,
+    /// Local hour (0–23) after which the evening nudge fires once.
+    #[serde(default = "d_evening_hour")]
+    evening_hour: u32,
+    /// Show a rotating eye-care tip on the break screen.
+    #[serde(default = "d_true")]
+    tips_enabled: bool,
+}
+
+fn d_hydration_interval() -> u64 {
+    45 * 60
+}
+fn d_posture_interval() -> u64 {
+    30 * 60
+}
+fn d_evening_hour() -> u32 {
+    20
 }
 
 fn d_idle_threshold() -> u64 {
@@ -209,6 +240,13 @@ impl Default for Settings {
             reduce_motion: false,
             high_contrast: false,
             suppress_on_fullscreen: true,
+            hydration_enabled: false,
+            hydration_interval_secs: d_hydration_interval(),
+            posture_enabled: false,
+            posture_interval_secs: d_posture_interval(),
+            evening_nudge_enabled: false,
+            evening_hour: d_evening_hour(),
+            tips_enabled: true,
         }
     }
 }
@@ -239,6 +277,9 @@ fn clamp_settings(mut s: Settings) -> Settings {
     s.long_break_every = s.long_break_every.clamp(1, 20);
     s.long_break_secs = s.long_break_secs.clamp(60, 3600);
     s.blink_interval_secs = s.blink_interval_secs.clamp(30, 3600);
+    s.hydration_interval_secs = s.hydration_interval_secs.clamp(5 * 60, 4 * 60 * 60);
+    s.posture_interval_secs = s.posture_interval_secs.clamp(5 * 60, 4 * 60 * 60);
+    s.evening_hour = s.evening_hour.min(23);
     s
 }
 
@@ -268,6 +309,11 @@ struct TimerState {
     blink_remaining: u64,
     /// Currently frozen because the user is idle.
     idle: bool,
+    /// Countdowns to the next hydration / posture nudge.
+    hydration_remaining: u64,
+    posture_remaining: u64,
+    /// Day-of-year the evening nudge last fired (-1 = not yet).
+    evening_nudged_day: i32,
 }
 
 #[derive(Clone, Copy)]
@@ -893,13 +939,35 @@ enum Tick {
     BreakEnd,
 }
 
+#[derive(Default)]
+struct Nudges {
+    blink: bool,
+    hydration: bool,
+    posture: bool,
+    evening: bool,
+}
+
+fn notify(app: &AppHandle, title: &str, body: &str) {
+    let _ = app.notification().builder().title(title).body(body).show();
+}
+
 fn run_timer(app: AppHandle) {
     tauri::async_runtime::spawn(async move {
         let mut ticker = tokio::time::interval(Duration::from_secs(1));
+        // After a suspend the future is paused; don't fire a backlog of ticks.
+        ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        let mut last_wall = chrono::Local::now();
+
         loop {
             ticker.tick().await;
 
-            let (action, do_blink) = {
+            // Suspend/resume or clock-jump detection: if real time skipped
+            // ahead, freeze this tick instead of decrementing / firing.
+            let now_wall = chrono::Local::now();
+            let slept = (now_wall - last_wall).num_seconds() > 3;
+            last_wall = now_wall;
+
+            let (action, nudges) = {
                 let state = app.state::<AppState>();
                 let s = state.settings.lock().unwrap().clone();
                 let mut t = state.timer.lock().unwrap();
@@ -908,25 +976,55 @@ fn run_timer(app: AppHandle) {
                     s.idle_pause_enabled && idle_seconds() >= s.idle_threshold_secs;
                 t.idle = idle_now;
 
-                // Freeze while paused, idle, or outside work hours.
-                if t.paused || idle_now || !within_work_hours(&s) {
-                    (Tick::None, false)
+                let mut nudges = Nudges::default();
+
+                // Evening warm-screen / dark-room nudge — once per day, any state.
+                if s.evening_nudge_enabled {
+                    let today = now_wall.ordinal() as i32;
+                    if now_wall.hour() >= s.evening_hour && t.evening_nudged_day != today {
+                        t.evening_nudged_day = today;
+                        nudges.evening = true;
+                    }
+                }
+
+                // Freeze while suspended, paused, idle, or outside work hours.
+                if slept || t.paused || idle_now || !within_work_hours(&s) {
+                    (Tick::None, nudges)
                 } else {
                     let mut action = Tick::None;
-                    let mut do_blink = false;
 
                     if t.remaining > 0 {
                         t.remaining -= 1;
                     }
 
-                    // Blink nudge while working.
-                    if t.phase == Phase::Working && s.blink_enabled {
-                        if t.blink_remaining > 0 {
-                            t.blink_remaining -= 1;
+                    // Periodic nudges while working.
+                    if t.phase == Phase::Working {
+                        if s.blink_enabled {
+                            if t.blink_remaining > 0 {
+                                t.blink_remaining -= 1;
+                            }
+                            if t.blink_remaining == 0 {
+                                t.blink_remaining = s.blink_interval_secs.max(1);
+                                nudges.blink = true;
+                            }
                         }
-                        if t.blink_remaining == 0 {
-                            t.blink_remaining = s.blink_interval_secs.max(1);
-                            do_blink = true;
+                        if s.hydration_enabled {
+                            if t.hydration_remaining > 0 {
+                                t.hydration_remaining -= 1;
+                            }
+                            if t.hydration_remaining == 0 {
+                                t.hydration_remaining = s.hydration_interval_secs.max(1);
+                                nudges.hydration = true;
+                            }
+                        }
+                        if s.posture_enabled {
+                            if t.posture_remaining > 0 {
+                                t.posture_remaining -= 1;
+                            }
+                            if t.posture_remaining == 0 {
+                                t.posture_remaining = s.posture_interval_secs.max(1);
+                                nudges.posture = true;
+                            }
                         }
                     }
 
@@ -954,18 +1052,30 @@ fn run_timer(app: AppHandle) {
                         }
                     }
 
-                    (action, do_blink)
+                    (action, nudges)
                 }
             };
 
-            if do_blink {
-                let _ = app
-                    .notification()
-                    .builder()
-                    .title("Blink 👀")
-                    .body("Blink slowly and fully a few times.")
-                    .show();
+            if nudges.blink {
+                notify(&app, "Blink 👀", "Blink slowly and fully a few times.");
                 let _ = app.emit("timer:blink", ());
+            }
+            if nudges.hydration {
+                notify(&app, "Hydrate 💧", "Take a sip of water — dry eyes thank you.");
+            }
+            if nudges.posture {
+                notify(
+                    &app,
+                    "Posture check",
+                    "Sit back, relax your shoulders, screen about an arm's length away.",
+                );
+            }
+            if nudges.evening {
+                notify(
+                    &app,
+                    "Evening eyes",
+                    "Warm your screen (night mode) and avoid using it in the dark.",
+                );
             }
 
             match action {
@@ -1079,6 +1189,9 @@ pub fn run() {
                 is_long: false,
                 blink_remaining: settings.blink_interval_secs.max(1),
                 idle: false,
+                hydration_remaining: settings.hydration_interval_secs.max(1),
+                posture_remaining: settings.posture_interval_secs.max(1),
+                evening_nudged_day: -1,
             };
             app.manage(AppState {
                 settings: Mutex::new(settings),

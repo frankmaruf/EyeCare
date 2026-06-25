@@ -308,6 +308,14 @@ input[type="checkbox"] {
   font-size: 0.9rem;
 }
 
+.break-tip {
+  margin: 12px 0 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+  max-width: 440px;
+  min-height: 1.2em;
+}
+
 /* settings sub-section heading */
 .section-label {
   grid-column: 1 / -1;
@@ -694,6 +702,9 @@ body:has(.widget) {
 }
 .s-card:nth-child(11) {
   animation-delay: 0.85s;
+}
+.s-card:nth-child(12) {
+  animation-delay: 0.93s;
 }
 
 .update-row {
