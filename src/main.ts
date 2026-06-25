@@ -135,6 +135,14 @@ function renderBreak() {
 
 const WIDGET_CIRC = 2 * Math.PI * 44;
 
+// Monochrome inline icons (inherit currentColor) so the action bar looks
+// consistent — no clashing colour emoji.
+const ICON_PAUSE = `<svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1.2"/><rect x="14" y="5" width="4" height="14" rx="1.2"/></svg>`;
+const ICON_PLAY = `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 4.5l13 7.5-13 7.5z"/></svg>`;
+const ICON_EYE = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>`;
+const ICON_SKIP = `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M5 4.5l10 7.5-10 7.5z"/><rect x="16.5" y="5" width="3" height="14" rx="1.2"/></svg>`;
+const ICON_EXPAND = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h6v6"/><path d="M10 20H4v-6"/><path d="M20 4l-8 8"/><path d="M4 20l8-8"/></svg>`;
+
 function applyWidgetStyle(s: Settings) {
   const card = document.querySelector<HTMLDivElement>(".widget");
   if (!card) return;
@@ -163,11 +171,11 @@ async function renderWidget() {
         </div>
       </div>
       <div class="w-actions">
-        <button id="w-pause" title="Pause / Resume">⏸</button>
-        <button id="w-take" title="Take a break now">☕</button>
-        <button id="w-skip" title="Skip">⏭</button>
+        <button id="w-pause" title="Pause / Resume">${ICON_PAUSE}</button>
+        <button id="w-take" title="Take a break now">${ICON_EYE}</button>
+        <button id="w-skip" title="Skip">${ICON_SKIP}</button>
       </div>
-      <button class="w-restore" id="w-restore" title="Open EyeBreak">⤢</button>
+      <button class="w-restore" id="w-restore" title="Open EyeBreak">${ICON_EXPAND}</button>
       <div class="w-resize" id="w-resize" title="Drag to resize"></div>
     </div>
   `;
@@ -225,7 +233,7 @@ async function renderWidget() {
 
   const update = (t: TimerSnapshot) => {
     paused = t.paused;
-    pauseBtn.textContent = t.paused ? "▶" : "⏸";
+    pauseBtn.innerHTML = t.paused ? ICON_PLAY : ICON_PAUSE;
     timeEl.textContent = fmt(t.remaining);
     setRing(ringFg, t.remaining, t.total, WIDGET_CIRC);
     card.dataset.phase = t.paused ? "paused" : t.phase;

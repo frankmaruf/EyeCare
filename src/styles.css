@@ -334,8 +334,8 @@ body:has(.widget) {
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 9px 9px 7px;
-  gap: 5px;
+  padding: 12px 12px 9px;
+  gap: 8px;
   background: rgba(14, 23, 38, var(--w-fill, 0.95));
   border: 1px solid #2b3a57;
   -webkit-user-select: none;
@@ -350,6 +350,7 @@ body:has(.widget) {
   flex: 1 1 auto;
   width: 100%;
   min-height: 0;
+  padding: 3px;
   display: grid;
 }
 
@@ -378,13 +379,13 @@ body:has(.widget) {
 .w-ring-bg {
   fill: none;
   stroke: #22324d;
-  stroke-width: 7;
+  stroke-width: 6;
 }
 
 .w-ring-fg {
   fill: none;
   stroke: var(--accent);
-  stroke-width: 7;
+  stroke-width: 6;
   stroke-linecap: round;
   transition: stroke-dashoffset 0.95s linear;
 }
@@ -440,32 +441,49 @@ body:has(.widget) {
   color: var(--text);
 }
 
+.w-restore svg {
+  width: 12px;
+  height: 12px;
+  display: block;
+}
+
 /* widget quick-action buttons (pause / take break / skip) */
 .w-actions {
   flex: 0 0 auto;
+  width: 100%;
   display: flex;
-  gap: 8px;
+  justify-content: center;
+  gap: 10px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
   z-index: 2;
 }
 
 .w-actions button {
-  width: 30px;
-  height: 26px;
+  width: 32px;
+  height: 28px;
   padding: 0;
   display: grid;
   place-items: center;
-  font-size: 0.82rem;
-  line-height: 1;
   border: none;
-  border-radius: 7px;
-  background: rgba(255, 255, 255, 0.16);
-  color: var(--text);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.07);
+  color: #c4d0e3;
   cursor: pointer;
-  transition: background 0.15s;
+  transition:
+    background 0.15s,
+    color 0.15s;
 }
 
 .w-actions button:hover {
-  background: rgba(255, 255, 255, 0.3);
+  background: rgba(255, 255, 255, 0.18);
+  color: #fff;
+}
+
+.w-actions svg {
+  width: 15px;
+  height: 15px;
+  display: block;
 }
 
 /* resize grip (bottom-right corner) */
