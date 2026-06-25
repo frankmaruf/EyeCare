@@ -37,6 +37,10 @@ Built with [Tauri v2](https://tauri.app) — a Rust core and a tiny web UI.
 - **Round / squircle / square**, resizable (drag the corner), adjustable opacity, draggable, remembers its position.
 - Quick actions on hover (pause / take break / skip), one-click restore.
 
+<div align="center">
+<img src="docs/img/widget.png" width="180" alt="EyeCare floating widget" />
+</div>
+
 **Wellbeing nudges** (all optional)
 - **Blink** reminders, **hydration**, **posture**, **eye-drops / artificial tears**, and an **evening warm-screen** nudge.
 - **Guided eye-exercises** and **calming visuals** on the break screen, plus rotating **eye-care tips**.
