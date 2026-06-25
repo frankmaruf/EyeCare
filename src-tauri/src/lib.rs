@@ -46,9 +46,12 @@ struct Settings {
     /// "round" | "squircle" | "square".
     #[serde(default = "d_widget_shape")]
     widget_shape: String,
-    /// Square edge length, logical px.
-    #[serde(default = "d_widget_size")]
-    widget_size: u32,
+    /// Widget width, logical px.
+    #[serde(default = "d_widget_dim")]
+    widget_width: u32,
+    /// Widget height, logical px.
+    #[serde(default = "d_widget_dim")]
+    widget_height: u32,
     /// Fill opacity, 20–100.
     #[serde(default = "d_widget_opacity")]
     widget_opacity: u32,
@@ -65,8 +68,8 @@ fn d_widget_mode() -> String {
 fn d_widget_shape() -> String {
     "squircle".into()
 }
-fn d_widget_size() -> u32 {
-    140
+fn d_widget_dim() -> u32 {
+    150
 }
 fn d_widget_opacity() -> u32 {
     95
@@ -84,7 +87,8 @@ impl Default for Settings {
             sound_enabled: false,
             widget_mode: d_widget_mode(),
             widget_shape: d_widget_shape(),
-            widget_size: d_widget_size(),
+            widget_width: d_widget_dim(),
+            widget_height: d_widget_dim(),
             widget_opacity: d_widget_opacity(),
             widget_x: None,
             widget_y: None,
@@ -105,7 +109,8 @@ fn clamp_settings(mut s: Settings) -> Settings {
     if !matches!(s.escalation.as_str(), "gentle" | "standard" | "forced") {
         s.escalation = "standard".into();
     }
-    s.widget_size = s.widget_size.clamp(80, 320);
+    s.widget_width = s.widget_width.clamp(80, 480);
+    s.widget_height = s.widget_height.clamp(80, 480);
     s.widget_opacity = s.widget_opacity.clamp(20, 100);
     if !matches!(s.widget_mode.as_str(), "off" | "minimized" | "always") {
         s.widget_mode = "minimized".into();
@@ -278,8 +283,10 @@ fn apply_widget_config(app: &AppHandle) {
         s
     };
     if let Some(w) = app.get_webview_window("widget") {
-        let size = s.widget_size as f64;
-        let _ = w.set_size(tauri::LogicalSize::new(size, size));
+        let _ = w.set_size(tauri::LogicalSize::new(
+            s.widget_width as f64,
+            s.widget_height as f64,
+        ));
         if let (Some(x), Some(y)) = (s.widget_x, s.widget_y) {
             let _ = w.set_position(tauri::PhysicalPosition::new(x, y));
         }
@@ -658,14 +665,30 @@ pub fn run() {
             apply_widget_config(&handle);
             if let Some(widget) = app.get_webview_window("widget") {
                 let wh = handle.clone();
-                widget.on_window_event(move |event| {
-                    if let WindowEvent::Moved(pos) = event {
+                let w_scale = widget.clone();
+                widget.on_window_event(move |event| match event {
+                    WindowEvent::Moved(pos) => {
                         let state = wh.state::<AppState>();
                         let mut s = state.settings.lock().unwrap();
                         s.widget_x = Some(pos.x as f64);
                         s.widget_y = Some(pos.y as f64);
                         save_settings(&wh, &s);
                     }
+                    WindowEvent::Resized(size) => {
+                        // Persist the dragged size (store logical px so it matches
+                        // the values shown in Settings).
+                        let sf = w_scale.scale_factor().unwrap_or(1.0);
+                        let logical = size.to_logical::<f64>(sf);
+                        if logical.width < 1.0 || logical.height < 1.0 {
+                            return; // ignore the minimize-to-zero event
+                        }
+                        let state = wh.state::<AppState>();
+                        let mut s = state.settings.lock().unwrap();
+                        s.widget_width = (logical.width.round() as u32).clamp(80, 480);
+                        s.widget_height = (logical.height.round() as u32).clamp(80, 480);
+                        save_settings(&wh, &s);
+                    }
+                    _ => {}
                 });
             }
             update_widget_visibility(&handle);

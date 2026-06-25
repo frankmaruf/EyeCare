@@ -329,7 +329,6 @@ body:has(.widget) {
   place-items: center;
   background: rgba(14, 23, 38, var(--w-fill, 0.95));
   border: 1px solid #2b3a57;
-  overflow: hidden;
   -webkit-user-select: none;
   user-select: none;
   cursor: grab;
@@ -446,6 +445,31 @@ body:has(.widget) {
 
 .w-actions button:hover {
   background: rgba(255, 255, 255, 0.22);
+}
+
+/* resize grip (bottom-right corner) */
+.w-resize {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 18px;
+  height: 18px;
+  cursor: nwse-resize;
+  z-index: 3;
+  opacity: 0;
+  transition: opacity 0.15s;
+  background: linear-gradient(
+    135deg,
+    transparent 0 52%,
+    rgba(255, 255, 255, 0.55) 52% 60%,
+    transparent 60% 70%,
+    rgba(255, 255, 255, 0.55) 70% 78%,
+    transparent 78%
+  );
+}
+
+.widget:hover .w-resize {
+  opacity: 0.85;
 }
 
 /* ---------------- Settings nav ---------------- */

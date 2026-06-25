@@ -20,7 +20,8 @@ interface Settings {
   soundEnabled: boolean;
   widgetMode: WidgetMode;
   widgetShape: WidgetShape;
-  widgetSize: number;
+  widgetWidth: number;
+  widgetHeight: number;
   widgetOpacity: number;
   widgetX: number | null;
   widgetY: number | null;
@@ -165,6 +166,7 @@ async function renderWidget() {
         <button id="w-skip" title="Skip">⏭</button>
       </div>
       <button class="w-restore" id="w-restore" title="Open EyeBreak">⤢</button>
+      <div class="w-resize" id="w-resize" title="Drag to resize"></div>
     </div>
   `;
 
@@ -179,13 +181,27 @@ async function renderWidget() {
   // when the click lands on the SVG circles, so start the drag from JS.
   card.addEventListener("pointerdown", async (e) => {
     if (e.button !== 0) return;
-    if ((e.target as HTMLElement).closest("button")) return; // let buttons work
+    // let the buttons and the resize grip handle their own clicks
+    if ((e.target as HTMLElement).closest("button, .w-resize")) return;
     try {
       await getCurrentWindow().startDragging();
     } catch {
       /* ignore */
     }
   });
+
+  // Resize grip (bottom-right corner) — drag to resize the frameless window.
+  document
+    .querySelector<HTMLDivElement>("#w-resize")!
+    .addEventListener("pointerdown", async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      try {
+        await getCurrentWindow().startResizeDragging("SouthEast");
+      } catch {
+        /* ignore */
+      }
+    });
 
   let paused = false;
   pauseBtn.addEventListener("click", (e) => {
@@ -376,8 +392,11 @@ async function showSettings() {
               <option value="square">Square</option>
             </select>
           </label>
-          <label>Widget size <span class="unit">(px)</span>
-            <input type="number" id="f-wsize" min="80" max="320" />
+          <label>Widget width <span class="unit">(px)</span>
+            <input type="number" id="f-wwidth" min="80" max="480" />
+          </label>
+          <label>Widget height <span class="unit">(px)</span>
+            <input type="number" id="f-wheight" min="80" max="480" />
           </label>
           <label>Widget opacity <span class="unit">(%)</span>
             <input type="number" id="f-wopacity" min="20" max="100" />
@@ -404,7 +423,8 @@ async function showSettings() {
   const fSound = $<HTMLInputElement>("#f-sound");
   const fWMode = $<HTMLSelectElement>("#f-wmode");
   const fWShape = $<HTMLSelectElement>("#f-wshape");
-  const fWSize = $<HTMLInputElement>("#f-wsize");
+  const fWWidth = $<HTMLInputElement>("#f-wwidth");
+  const fWHeight = $<HTMLInputElement>("#f-wheight");
   const fWOpacity = $<HTMLInputElement>("#f-wopacity");
   const savedMsg = $<HTMLSpanElement>("#saved-msg");
 
@@ -419,7 +439,8 @@ async function showSettings() {
   fSound.checked = c.soundEnabled;
   fWMode.value = c.widgetMode;
   fWShape.value = c.widgetShape;
-  fWSize.value = String(c.widgetSize);
+  fWWidth.value = String(c.widgetWidth);
+  fWHeight.value = String(c.widgetHeight);
   fWOpacity.value = String(c.widgetOpacity);
 
   $<HTMLButtonElement>("#btn-back").addEventListener("click", () =>
@@ -438,12 +459,14 @@ async function showSettings() {
       soundEnabled: fSound.checked,
       widgetMode: fWMode.value as WidgetMode,
       widgetShape: fWShape.value as WidgetShape,
-      widgetSize: Number(fWSize.value),
+      widgetWidth: Number(fWWidth.value),
+      widgetHeight: Number(fWHeight.value),
       widgetOpacity: Number(fWOpacity.value),
     };
     mainSettings = await invoke<Settings>("set_settings", { settings: next });
     // reflect any clamping the backend applied
-    fWSize.value = String(mainSettings.widgetSize);
+    fWWidth.value = String(mainSettings.widgetWidth);
+    fWHeight.value = String(mainSettings.widgetHeight);
     fWOpacity.value = String(mainSettings.widgetOpacity);
     savedMsg.textContent = "Saved ✓";
     setTimeout(() => (savedMsg.textContent = ""), 1800);
