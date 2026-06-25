@@ -692,6 +692,21 @@ body:has(.widget) {
 .s-card:nth-child(10) {
   animation-delay: 0.77s;
 }
+.s-card:nth-child(11) {
+  animation-delay: 0.85s;
+}
+
+.update-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.update-msg {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
 
 /* ---------------- Accessibility ---------------- */
 

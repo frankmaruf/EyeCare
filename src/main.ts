@@ -689,6 +689,19 @@ async function showSettings() {
             </label>
           </div>
         </section>
+
+        <section class="card s-card">
+          <h2><span class="s-dot"></span> Updates</h2>
+          <div class="update-row">
+            <button class="btn ghost" id="btn-checkupdate">Check for updates</button>
+            <span class="update-msg" id="update-msg"></span>
+          </div>
+          <p class="hint">
+            EyeBreak 0.1.0. Auto-update applies to AppImage / Windows / macOS
+            builds; the apt-installed <code>.deb</code> updates via your package
+            manager.
+          </p>
+        </section>
       </div>
 
       <div class="save-row">
@@ -839,6 +852,38 @@ async function showSettings() {
     void savedMsg.offsetWidth; // restart the animation
     savedMsg.classList.add("show");
     setTimeout(() => (savedMsg.textContent = ""), 2000);
+  });
+
+  // --- updates ---
+  const updBtn = $<HTMLButtonElement>("#btn-checkupdate");
+  const updMsg = $<HTMLSpanElement>("#update-msg");
+  updBtn.addEventListener("click", async () => {
+    updMsg.textContent = "Checking…";
+    updBtn.disabled = true;
+    try {
+      const ver = await invoke<string>("check_update");
+      if (ver) {
+        updMsg.innerHTML = `Update available: <b>${ver}</b>`;
+        updBtn.textContent = "Download & install";
+        updBtn.disabled = false;
+        updBtn.onclick = async () => {
+          updMsg.textContent = "Downloading…";
+          updBtn.disabled = true;
+          try {
+            await invoke("install_update");
+          } catch (err) {
+            updMsg.textContent = `Failed: ${err}`;
+            updBtn.disabled = false;
+          }
+        };
+      } else {
+        updMsg.textContent = "You're up to date ✓";
+        updBtn.disabled = false;
+      }
+    } catch {
+      updMsg.textContent = "Update check failed (no release published yet)";
+      updBtn.disabled = false;
+    }
   });
 }
 

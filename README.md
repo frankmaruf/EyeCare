@@ -46,6 +46,29 @@ npm run tauri build
 
 Linux artifacts land in `src-tauri/target/release/bundle/` (`.deb`, AppImage, …). Build Windows/macOS artifacts on their own OS (or via CI) — Tauri does not cross-compile easily.
 
+Install the `.deb` (shows up in the app menu):
+
+```bash
+sudo apt install ./src-tauri/target/release/bundle/deb/EyeBreak_0.1.0_amd64.deb
+```
+
+## Auto-update (release flow)
+
+The app is wired with `tauri-plugin-updater` and a **"Check for updates"** button (Settings → Updates). It is **inert until you publish signed releases** — and it updates **AppImage / Windows / macOS** bundles only; an apt-installed `.deb` is updated by your package manager, not by the in-app updater.
+
+To make it live:
+
+1. **Keep the signing key safe.** A keypair was generated at `~/.tauri/eyebreak.key` (private) / `.key.pub` (public). The public key is already in `tauri.conf.json` → `plugins.updater.pubkey`. Never commit the private key.
+2. **Point the endpoint at your repo.** `tauri.conf.json` → `plugins.updater.endpoints` currently uses a placeholder GitHub URL — change `khulnatech/eyebreak` to your real repo.
+3. **Build signed artifacts:**
+   ```bash
+   export TAURI_SIGNING_PRIVATE_KEY="$(cat ~/.tauri/eyebreak.key)"
+   export TAURI_SIGNING_PRIVATE_KEY_PASSWORD=""      # set if the key has a password
+   npm run tauri build -- --bundles appimage          # + nsis / dmg on their OSes
+   ```
+   This emits `*.AppImage`, `*.AppImage.sig`, and a `latest.json` next to the bundle.
+4. **Publish** the bundle, its `.sig`, and `latest.json` to the GitHub release the endpoint points at. The app then sees the new version and can download + restart.
+
 ## Project layout
 
 ```
