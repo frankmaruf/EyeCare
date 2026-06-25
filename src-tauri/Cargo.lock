@@ -1029,6 +1029,7 @@ dependencies = [
  "tokio",
  "user-idle",
  "x11rb",
+ "zbus",
 ]
 
 [[package]]

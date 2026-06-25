@@ -32,9 +32,11 @@ interface Settings {
   scSkip: string;
   scTake: string;
   scPostpone: string;
+  scToggleWidget: string;
   workHoursEnabled: boolean;
   workStart: string;
   workEnd: string;
+  workDays: boolean[];
   idlePauseEnabled: boolean;
   idleThresholdSecs: number;
   longBreakEnabled: boolean;
@@ -45,6 +47,7 @@ interface Settings {
   reduceMotion: boolean;
   highContrast: boolean;
   suppressOnFullscreen: boolean;
+  respectDnd: boolean;
   hydrationEnabled: boolean;
   hydrationIntervalSecs: number;
   postureEnabled: boolean;
@@ -677,6 +680,7 @@ async function showSettings() {
             <label>Skip break<input type="text" id="f-scskip" spellcheck="false" /></label>
             <label>Take a break now<input type="text" id="f-sctake" spellcheck="false" /></label>
             <label>Postpone<input type="text" id="f-scpostpone" spellcheck="false" /></label>
+            <label>Hide / show widget<input type="text" id="f-sctoggle" spellcheck="false" /></label>
           </div>
           <p class="hint">e.g. <code>CmdOrControl+Alt+P</code> — applied on Save.</p>
         </section>
@@ -693,6 +697,9 @@ async function showSettings() {
             </label>
             <label>Start<input type="time" id="f-wstart" /></label>
             <label>End<input type="time" id="f-wend" /></label>
+            <label class="span-row">Active days
+              <div class="daypicker" id="daypicker"></div>
+            </label>
           </div>
         </section>
 
@@ -802,6 +809,13 @@ async function showSettings() {
                 <span class="slider"></span>
               </span>
             </label>
+            <label class="toggle-row">
+              <span>Respect OS Do-Not-Disturb (hides widget &amp; break during screen-share)</span>
+              <span class="switch">
+                <input type="checkbox" id="f-dnd" />
+                <span class="slider"></span>
+              </span>
+            </label>
           </div>
         </section>
 
@@ -908,6 +922,7 @@ async function showSettings() {
   const fScSkip = $<HTMLInputElement>("#f-scskip");
   const fScTake = $<HTMLInputElement>("#f-sctake");
   const fScPostpone = $<HTMLInputElement>("#f-scpostpone");
+  const fScToggle = $<HTMLInputElement>("#f-sctoggle");
   const fWh = $<HTMLInputElement>("#f-wh");
   const fWStart = $<HTMLInputElement>("#f-wstart");
   const fWEnd = $<HTMLInputElement>("#f-wend");
@@ -919,6 +934,7 @@ async function showSettings() {
   const fIdle = $<HTMLInputElement>("#f-idle");
   const fIdleThresh = $<HTMLInputElement>("#f-idlethresh");
   const fSuppress = $<HTMLInputElement>("#f-suppress");
+  const fDnd = $<HTMLInputElement>("#f-dnd");
   const fReduce = $<HTMLInputElement>("#f-reduce");
   const fContrast = $<HTMLInputElement>("#f-contrast");
   const fHydration = $<HTMLInputElement>("#f-hydration");
@@ -979,6 +995,7 @@ async function showSettings() {
   fScSkip.value = c.scSkip;
   fScTake.value = c.scTake;
   fScPostpone.value = c.scPostpone;
+  fScToggle.value = c.scToggleWidget;
   fWh.checked = c.workHoursEnabled;
   fWStart.value = c.workStart;
   fWEnd.value = c.workEnd;
@@ -990,6 +1007,7 @@ async function showSettings() {
   fIdle.checked = c.idlePauseEnabled;
   fIdleThresh.value = String(c.idleThresholdSecs);
   fSuppress.checked = c.suppressOnFullscreen;
+  fDnd.checked = c.respectDnd;
   fReduce.checked = c.reduceMotion;
   fContrast.checked = c.highContrast;
   fHydration.checked = c.hydrationEnabled;
@@ -1003,6 +1021,25 @@ async function showSettings() {
   fCalm.checked = c.calmVisualsEnabled;
   fAccent.value = c.accent || "#4cc6c0";
   fStats.checked = c.statsEnabled;
+
+  // active-days picker (Mon..Sun)
+  const DAY_LABELS = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"];
+  const dayState =
+    c.workDays && c.workDays.length === 7
+      ? c.workDays.slice()
+      : [true, true, true, true, true, true, true];
+  const dp = $<HTMLDivElement>("#daypicker");
+  DAY_LABELS.forEach((lbl, i) => {
+    const chip = document.createElement("button");
+    chip.type = "button";
+    chip.className = "daychip" + (dayState[i] ? " on" : "");
+    chip.textContent = lbl;
+    chip.addEventListener("click", () => {
+      dayState[i] = !dayState[i];
+      chip.classList.toggle("on", dayState[i]);
+    });
+    dp.appendChild(chip);
+  });
 
   $<HTMLButtonElement>("#btn-back").addEventListener("click", () =>
     showDashboard(),
@@ -1029,9 +1066,11 @@ async function showSettings() {
       scSkip: fScSkip.value.trim(),
       scTake: fScTake.value.trim(),
       scPostpone: fScPostpone.value.trim(),
+      scToggleWidget: fScToggle.value.trim(),
       workHoursEnabled: fWh.checked,
       workStart: fWStart.value || "09:00",
       workEnd: fWEnd.value || "17:00",
+      workDays: dayState,
       longBreakEnabled: fLong.checked,
       longBreakEvery: Number(fLongEvery.value),
       longBreakSecs: Number(fLongLen.value) * 60,
@@ -1040,6 +1079,7 @@ async function showSettings() {
       idlePauseEnabled: fIdle.checked,
       idleThresholdSecs: Number(fIdleThresh.value),
       suppressOnFullscreen: fSuppress.checked,
+      respectDnd: fDnd.checked,
       reduceMotion: fReduce.checked,
       highContrast: fContrast.checked,
       hydrationEnabled: fHydration.checked,

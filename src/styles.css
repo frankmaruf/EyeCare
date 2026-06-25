@@ -937,6 +937,44 @@ input[type="color"] {
   color: var(--muted);
 }
 
+/* active-days picker */
+.span-row {
+  grid-column: 1 / -1;
+}
+
+.daypicker {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 2px;
+}
+
+.daychip {
+  width: 40px;
+  height: 34px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--panel-solid);
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    color 0.15s,
+    border-color 0.15s;
+}
+
+.daychip.on {
+  background: var(--accent);
+  color: #0e1726;
+  border-color: var(--accent);
+}
+
+.daychip:hover {
+  border-color: var(--accent-2);
+}
+
 /* ---------------- Accessibility ---------------- */
 
 /* Reduce motion: collapse animations/transitions to ~instant (not "none", so

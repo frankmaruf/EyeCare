@@ -82,6 +82,8 @@ struct Settings {
     sc_take: String,
     #[serde(default = "d_sc_postpone")]
     sc_postpone: String,
+    #[serde(default = "d_sc_toggle_widget")]
+    sc_toggle_widget: String,
     /// Only run reminders during the work-hours window.
     #[serde(default)]
     work_hours_enabled: bool,
@@ -90,6 +92,9 @@ struct Settings {
     work_start: String,
     #[serde(default = "d_work_end")]
     work_end: String,
+    /// Which weekdays reminders run on (Mon..Sun).
+    #[serde(default = "d_work_days")]
+    work_days: [bool; 7],
 
     // --- v1.1 ---
     /// Pause the timer when there's been no input for a while.
@@ -123,6 +128,10 @@ struct Settings {
     /// (presentation / screen-share / video).
     #[serde(default = "d_true")]
     suppress_on_fullscreen: bool,
+    /// Respect the OS Do-Not-Disturb state — hide the widget and suppress
+    /// breaks while DND is on (KDE turns DND on during screen-share).
+    #[serde(default = "d_true")]
+    respect_dnd: bool,
 
     // --- v1.2 eye-health extras ---
     /// Periodic "drink water" nudge while working.
@@ -200,11 +209,17 @@ fn d_sc_take() -> String {
 fn d_sc_postpone() -> String {
     "CmdOrControl+Alt+Z".into()
 }
+fn d_sc_toggle_widget() -> String {
+    "CmdOrControl+Alt+W".into()
+}
 fn d_work_start() -> String {
     "09:00".into()
 }
 fn d_work_end() -> String {
     "17:00".into()
+}
+fn d_work_days() -> [bool; 7] {
+    [true; 7]
 }
 
 fn d_widget_mode() -> String {
@@ -243,9 +258,11 @@ impl Default for Settings {
             sc_skip: d_sc_skip(),
             sc_take: d_sc_take(),
             sc_postpone: d_sc_postpone(),
+            sc_toggle_widget: d_sc_toggle_widget(),
             work_hours_enabled: false,
             work_start: d_work_start(),
             work_end: d_work_end(),
+            work_days: d_work_days(),
             idle_pause_enabled: true,
             idle_threshold_secs: d_idle_threshold(),
             long_break_enabled: false,
@@ -256,6 +273,7 @@ impl Default for Settings {
             reduce_motion: false,
             high_contrast: false,
             suppress_on_fullscreen: true,
+            respect_dnd: true,
             hydration_enabled: false,
             hydration_interval_secs: d_hydration_interval(),
             posture_enabled: false,
@@ -342,6 +360,7 @@ enum ShortAction {
     Skip,
     Take,
     Postpone,
+    ToggleWidget,
 }
 
 struct AppState {
@@ -566,19 +585,22 @@ fn get_stats(app: AppHandle) -> StatsSummary {
 
 /// Open the break reminder window (or fire a notification for "gentle").
 fn start_break(app: &AppHandle) {
-    let (mut escalation, sound, suppress) = {
+    let (mut escalation, sound, suppress, respect_dnd) = {
         let state = app.state::<AppState>();
         let s = state.settings.lock().unwrap();
         (
             s.escalation.clone(),
             s.sound_enabled,
             s.suppress_on_fullscreen,
+            s.respect_dnd,
         )
     };
 
-    // Don't pop a window over a presentation / screen-share / fullscreen video:
-    // downgrade to a gentle notification when another app is fullscreen.
-    if suppress && escalation != "gentle" && another_app_fullscreen() {
+    // Don't pop a window over a presentation / screen-share / fullscreen video,
+    // or while the OS is in Do-Not-Disturb: downgrade to a gentle notification.
+    if escalation != "gentle"
+        && ((suppress && another_app_fullscreen()) || (respect_dnd && os_dnd_active()))
+    {
         escalation = "gentle".into();
     }
 
@@ -656,10 +678,14 @@ fn update_widget_visibility(app: &AppHandle) {
         Some(w) => w,
         None => return,
     };
-    let (mode, suppress) = {
+    let (mode, suppress, respect_dnd) = {
         let state = app.state::<AppState>();
         let s = state.settings.lock().unwrap();
-        (s.widget_mode.clone(), s.suppress_on_fullscreen)
+        (
+            s.widget_mode.clone(),
+            s.suppress_on_fullscreen,
+            s.respect_dnd,
+        )
     };
     // Catch a native minimize (the title-bar button) and convert it to
     // hide-to-tray: a minimized window stays grouped with the app, so the WM
@@ -696,6 +722,10 @@ fn update_widget_visibility(app: &AppHandle) {
     // Hide the widget over a fullscreen app (presentation / fullscreen call) so
     // it doesn't show up on a shared/recorded screen.
     if want && suppress && another_app_fullscreen() {
+        want = false;
+    }
+    // Hide while the OS is in DND (KDE enables DND during screen-share).
+    if want && respect_dnd && os_dnd_active() {
         want = false;
     }
     if *app.state::<AppState>().widget_hidden_override.lock().unwrap() {
@@ -841,6 +871,11 @@ fn within_work_hours(s: &Settings) -> bool {
         return true;
     }
     let now = chrono::Local::now();
+    // Mon = 0 .. Sun = 6
+    let weekday = now.weekday().num_days_from_monday() as usize;
+    if !s.work_days.get(weekday).copied().unwrap_or(true) {
+        return false;
+    }
     let now_min = now.hour() * 60 + now.minute();
     let parse = |t: &str| -> Option<u32> {
         let mut parts = t.split(':');
@@ -928,6 +963,32 @@ fn another_app_fullscreen() -> bool {
     false
 }
 
+/// Whether the OS is in Do-Not-Disturb. On Linux this reads the freedesktop
+/// Notifications "Inhibited" property over D-Bus — KDE Plasma turns this on
+/// during screen-sharing / recording / presentations.
+#[cfg(target_os = "linux")]
+fn os_dnd_active() -> bool {
+    use zbus::blocking::Connection;
+    let probe = || -> zbus::Result<bool> {
+        let conn = Connection::session()?;
+        let reply = conn.call_method(
+            Some("org.freedesktop.Notifications"),
+            "/org/freedesktop/Notifications",
+            Some("org.freedesktop.DBus.Properties"),
+            "Get",
+            &("org.freedesktop.Notifications", "Inhibited"),
+        )?;
+        let value: zbus::zvariant::OwnedValue = reply.body().deserialize()?;
+        Ok(bool::try_from(value).unwrap_or(false))
+    };
+    probe().unwrap_or(false)
+}
+
+#[cfg(not(target_os = "linux"))]
+fn os_dnd_active() -> bool {
+    false
+}
+
 /// Enable/disable launch-at-login to match the setting.
 #[cfg(desktop)]
 fn apply_autostart(app: &AppHandle) {
@@ -959,6 +1020,7 @@ fn register_shortcuts(app: &AppHandle) {
         (s.sc_skip.clone(), ShortAction::Skip),
         (s.sc_take.clone(), ShortAction::Take),
         (s.sc_postpone.clone(), ShortAction::Postpone),
+        (s.sc_toggle_widget.clone(), ShortAction::ToggleWidget),
     ] {
         let accel = accel.trim().to_string();
         if accel.is_empty() {
@@ -1322,6 +1384,7 @@ pub fn run() {
                             Some(ShortAction::Postpone) => {
                                 let _ = do_postpone(app);
                             }
+                            Some(ShortAction::ToggleWidget) => do_toggle_widget(app),
                             None => {}
                         }
                     })
