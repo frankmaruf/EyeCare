@@ -4,7 +4,7 @@
 > **Document type:** Requirements specification + technical research
 > **Platforms:** Linux, Windows, macOS
 > **Stack:** Tauri (v2) — Rust backend + web frontend
-> **Status:** Draft v0.2
+> **Status:** Draft v0.3 — added §4.12 / §7.9 floating mini-timer widget
 
 ---
 
@@ -97,6 +97,23 @@ All settings persist across restarts (stored locally as JSON). Includes everythi
 - Quick access: pause/resume, skip break, take a break now, postpone, open settings, quit.
 - Show time remaining until next break.
 
+### 4.12 Floating mini-timer widget (minimized / always-visible mode)
+When I minimize the main window (or send it to the tray), I want the option of a small **floating desktop widget** that stays on screen and shows the countdown to my next break — glanceable, out of the way, and good-looking. The tray tooltip already shows the time, but a visible widget is faster to read and feels more alive.
+
+- **When it shows** *(configurable)*: `off` · `only when the main window is minimized/hidden` (default) · `always on top of the desktop`.
+- **What it shows**: time remaining until the next break (and, during a break, the break countdown), with an optional progress ring and a small status dot (working / break / paused).
+- **Frameless & floating**: no title bar; transparent or solid background; sits above other windows. Its stacking obeys the same z-order control as §4.5 (above / normal / below).
+- **Draggable**: grab it anywhere to move it; it **remembers its position** across restarts. Optional snap to a screen corner/edge.
+- **Adjustable size**: width and height (or a single scale slider), with sensible min/max and a live preview — so it can be a tiny pill or a larger dial.
+- **Adjustable shape**: **round (circle)**, **squircle (rounded square, adjustable corner radius)**, or **square** — switchable at runtime.
+- **Adjustable look**: opacity/translucency, accent color / follows the app theme, light/dark. Honors **reduce motion** (§5) — no pulsing/animated ring when that's on.
+- **Interactions**: single-click restores the main window; right-click opens a mini menu (pause/resume, take a break now, skip, postpone, open settings, quit); optional double-click action.
+- **Passive (click-through) mode** *(optional)*: let clicks pass through to whatever is beneath, turning the widget into a pure display that never gets in the way.
+- **Auto-hide during a forced break overlay** so the two don't overlap.
+- Persisted like every other setting (size, shape, opacity, position, mode) — see §6.
+
+*(Platform feasibility — transparency, rounded corners, click-through and "always below" each have per-OS caveats; see §7.9.)*
+
 ## 5. Non-Functional Requirements
 - **Lightweight:** low CPU and memory while idle; small install size (a strength of Tauri).
 - **Responsive:** reminder must fire within ~1 second of the scheduled time.
@@ -136,6 +153,14 @@ Every row below is a runtime-adjustable setting (changed in-app, persisted to JS
 | Global shortcuts | on/off · per-action key bindings | on | ⚠️ X11 ✅; Wayland restricts global hotkeys (needs the desktop's global-shortcuts portal); macOS needs Accessibility permission (§7.8) |
 | Work hours | start–end time (or off) | off | ✅ App logic |
 | Autostart on boot | on / off | off | ✅ `tauri-plugin-autostart` (Linux uses XDG autostart — works on Kali/Ubuntu/most DEs) |
+| Floating widget mode | off / when-minimized / always | when-minimized | ✅ separate always-on-top window (§4.12, §7.9) |
+| Widget shape | round / squircle / square (+ corner radius) | squircle | ✅ CSS `border-radius` |
+| Widget size | 80–320 px or scale 50–200% | 140 px | ✅ `setSize` |
+| Widget background | solid / translucent / transparent | solid | ⚠️ transparency has macOS/Wayland/Nvidia caveats (§7.9); **solid always ✅** |
+| Widget opacity | 20–100% | 95 | ✅ when solid/translucent; ⚠️ with full transparency (§7.9) |
+| Widget click-through | on / off | off | ✅ `setIgnoreCursorEvents` (whole-widget; per-region deferred) |
+| Widget position | remembered x/y · corner snap | bottom-right | ✅ persisted + `tauri-plugin-positioner` |
+| Widget z-order | above / normal / below | above | ⚠️ "below" needs per-OS code, restricted on Wayland (§7.2) |
 | *Eye-health extras (see §9)* | various per feature | — | ✅ mostly app logic (blink, exercises, long breaks, hydration, tips, stats). ⚠️ exceptions tied to hardware/OS: warm-screen filter, ambient-brightness/dark-room (§9.4–9.5) |
 
 ### 6.1 Adjustability summary
@@ -209,9 +234,29 @@ Use **`tauri-plugin-autostart`**, which handles all three platforms. Under the h
 - **Wayland mitigations:** detect Wayland and (a) fall back the forced overlay to a maximized borderless window + urgent notification, (b) route global shortcuts through the XDG **GlobalShortcuts portal** where supported, (c) use an idle fallback / idle-notify portal.
 - **Suggested Linux test matrix:** Kali (Xfce/X11), Ubuntu (GNOME/**Wayland** and GNOME/**X11**), Fedora (GNOME/Wayland), and one KDE Plasma distro — covering both display servers and the main desktops before release.
 
+### 7.9 Floating widget — Tauri implementation & cross-platform research
+The widget (§4.12) is a **second `WebviewWindow`** (label `widget`) created alongside the main window with `transparent: true`, `decorations: false`, `alwaysOnTop: true`, `skipTaskbar: true`. The countdown UI is the same web stack as the rest of the app; shape and size are just CSS plus window sizing — so most of it is pure app logic. The sensitive part is **transparency**, which is where the per-OS caveats live.
+
+- **Shape** — pure CSS on a transparent window: `border-radius: 50%` = circle, e.g. `22px` = squircle, `0` = square. Bind the radius to a setting → adjustable at runtime. ✅ everywhere (given transparency works, below).
+- **Size (adjustable W/H)** — store width/height (or a scale factor) and apply with `WebviewWindow.setSize()` / builder `inner_size`, clamped to a min/max. Live preview = call `setSize` as the slider moves. ✅ app logic.
+- **Drag + remembered position** — a `data-tauri-drag-region` element moves the frameless window; persist x/y on the window `moved` event and restore on launch. `tauri-plugin-positioner` (already listed in §7.1) provides corner/edge snapping. ✅.
+- **Z-order (above / normal / below)** — reuses §4.5 / §7.2: `set_always_on_top(true)` for *above* (✅ native); *below* needs the per-OS raw-handle work and is restricted on Wayland.
+- **Click-through (passive mode)** — `WebviewWindow.setIgnoreCursorEvents(true)`. Tauri exposes **no native per-region hit-testing**, so click-through is **whole-widget** in v1 (fully interactive *or* fully passive); selective pass-through (clicks only through the transparent gaps) would need a ~60 fps cursor-position poll that toggles the flag — deferred.
+- **Window effects (optional polish)** — `set_effects()` / `EffectsBuilder` gives acrylic/mica blur on Windows and vibrancy on macOS (both require a transparent window).
+
+**Transparency — the platform-sensitive part (validate early):**
+- **macOS** — transparency needs the **`macOSPrivateApi: true`** flag in `tauri.conf.json`. Shadows are always disabled for transparent windows. Known bug: a transparent webview window can **lose transparency in the packaged `.dmg`** (tauri-apps/tauri #13415) — test the bundled app, not just `dev`.
+- **Windows** — transparency works; Windows 11 draws native rounded corners on an undecorated window when `border: true`; acrylic/mica via `set_effects`.
+- **Linux / X11** — works with a running compositor.
+- **Linux / Wayland** — needs the compositor's compositing (✅ KDE/KWin — this dev box — and GNOME/Mutter). **CSS shadows that fall outside the window get clipped** (no reliable Wayland frame-extents), so draw any glow on an *inner padded* element rather than outside the window edge.
+- ⚠️ **Nvidia + transparent window** — a known class of crashes/visual artifacts (GBM "Error 71", black/ghosted corners; tauri-apps/tauri #14924). **Mitigation / fallback:** ship an **"opaque widget" mode** — a solid rounded background instead of a transparent one — which sidesteps every transparency edge case above while still giving the round/square shapes and adjustable size. `WEBKIT_DISABLE_DMABUF_RENDERER=1` is an additional escape hatch.
+
+> **Recommendation:** default the widget to an **opaque/translucent rounded** look that is **draggable and interactive** (not click-through). Treat *full transparency*, *click-through*, and *"always below"* as opt-in "advanced" toggles — those are exactly the three modes with cross-platform caveats. This delivers a beautiful round/square widget on every target in v1, with the fancier modes degrading gracefully where unsupported.
+
 ## 8. UI / UX outline
 - **Tray/menu-bar icon** with countdown and quick menu.
-- **Settings window:** grouped sections — *Timing*, *Reminders*, *Window & Display*, *Sound*, *Shortcuts*, *Eye health*, *Startup*.
+- **Floating widget:** small frameless always-on-top countdown shown when minimized — round / squircle / square, adjustable size, draggable, remembers its position; click to restore, right-click for the quick menu (§4.12).
+- **Settings window:** grouped sections — *Timing*, *Reminders*, *Window & Display*, *Widget*, *Sound*, *Shortcuts*, *Eye health*, *Startup*.
 - **Pre-break warning:** small banner/notification with a postpone option.
 - **Break overlay:** large, calm message ("Look ~20 feet away — relax your eyes"), countdown, optional Skip/Postpone, optional progress ring.
 - **Notifications:** native OS notifications for gentle level and break-end.
@@ -267,14 +312,15 @@ Optionally display a calm nature image or a "look out your window" prompt on the
 | **MVP** | Adjustable work/break timer, pre-break warning, standard reminder window, tray icon, settings persistence, single-instance |
 | **v1.0** | Forced always-on-top overlay, window layering (above/normal), snooze + max-postpones, sound alerts + break-end signal, global shortcuts, autostart toggle, work-hours + presentation suppression (§9.9), auto-update |
 | **v1.1** | Idle pause, multi-monitor overlay, sleep/wake handling, respect OS DND, high-contrast/reduce-motion, blink reminders (§9.1), micro vs long breaks (§9.3) |
-| **v1.2** | Guided eye-exercises (§9.2), eye-care tips (§9.8), hydration reminder (§9.7), evening warm-screen + dark-room nudges (§9.4–9.5), local habit stats (§9.10), settings import/export |
-| **v1.3** | "Always below" window mode (platform-specific), posture reminder (§9.6), calming break visuals (§9.11), themes, localization |
+| **v1.2** | **Floating mini-timer widget (§4.12) — opaque/rounded, draggable, adjustable size & shape (round/squircle/square), remembered position**, guided eye-exercises (§9.2), eye-care tips (§9.8), hydration reminder (§9.7), evening warm-screen + dark-room nudges (§9.4–9.5), local habit stats (§9.10), settings import/export |
+| **v1.3** | "Always below" window mode (platform-specific), **advanced widget modes (full transparency, click-through, always-below — §7.9)**, posture reminder (§9.6), calming break visuals (§9.11), themes, localization |
 
 ## 11. Open questions
 - Should forced mode ever be fully un-skippable, or always allow an emergency exit?
 - Is Wayland "force over everything" support a hard requirement, or acceptable to degrade gracefully where unsupported?
 - Is the "always below" widget mode worth the platform-specific effort, or cut it?
 - Single-monitor only for v1, or multi-monitor from the start?
+- Floating widget (§4.12): default to **opaque** (dodges the Nvidia/Wayland transparency bugs, §7.9) or transparent-by-default? Show it on the primary monitor only, or on whichever monitor the cursor/active window is on?
 - Will this be open-source? (Affects license choice and distribution.)
 - Distribution targets: `.msi`/`.exe`, `.dmg`, `.AppImage`/`.deb` — which first?
 
