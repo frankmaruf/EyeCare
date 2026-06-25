@@ -1,4 +1,4 @@
-// EyeBreak — Rust backend.
+// EyeCare — Rust backend.
 //
 // Owns the authoritative timer (work interval -> break -> repeat), the user
 // settings (persisted to a local JSON file), the system-tray icon, and the
@@ -627,7 +627,7 @@ fn start_break(app: &AppHandle) {
     };
 
     let mut builder = WebviewWindowBuilder::new(app, "break", WebviewUrl::App(url.into()))
-        .title("EyeBreak — break time")
+        .title("EyeCare — break time")
         .inner_size(560.0, 380.0)
         .resizable(false)
         .always_on_top(forced)
@@ -751,11 +751,11 @@ fn update_tray(app: &AppHandle, snap: &TimerSnapshot) {
         let mm = snap.remaining / 60;
         let ss = snap.remaining % 60;
         let label = if snap.paused {
-            format!("EyeBreak — paused ({:02}:{:02})", mm, ss)
+            format!("EyeCare — paused ({:02}:{:02})", mm, ss)
         } else {
             match snap.phase {
-                Phase::Working => format!("EyeBreak — next break in {:02}:{:02}", mm, ss),
-                Phase::Break => format!("EyeBreak — break: {:02}:{:02} left", mm, ss),
+                Phase::Working => format!("EyeCare — next break in {:02}:{:02}", mm, ss),
+                Phase::Break => format!("EyeCare — break: {:02}:{:02} left", mm, ss),
             }
         };
         let _ = tray.set_tooltip(Some(&label));
@@ -953,7 +953,9 @@ fn another_app_fullscreen() -> bool {
             .get_property(false, win, AtomEnum::WM_CLASS, AtomEnum::STRING, 0, 256)?
             .reply()?;
         let cls_str = String::from_utf8_lossy(&cls.value).to_lowercase();
-        Ok(!cls_str.contains("eyebreak"))
+        Ok(!(cls_str.contains("eyebreak")
+            || cls_str.contains("eyecare")
+            || cls_str.contains("frankmaruf")))
     };
     probe().unwrap_or(false)
 }
@@ -1425,7 +1427,7 @@ pub fn run() {
             });
 
             // Tray icon + quick menu.
-            let open_i = MenuItemBuilder::with_id("open", "Open EyeBreak").build(app)?;
+            let open_i = MenuItemBuilder::with_id("open", "Open EyeCare").build(app)?;
             let pause_i = MenuItemBuilder::with_id("pause", "Pause / Resume").build(app)?;
             let take_i = MenuItemBuilder::with_id("take", "Take a break now").build(app)?;
             let skip_i = MenuItemBuilder::with_id("skip", "Skip break").build(app)?;
@@ -1444,7 +1446,7 @@ pub fn run() {
 
             TrayIconBuilder::with_id("main-tray")
                 .icon(app.default_window_icon().unwrap().clone())
-                .tooltip("EyeBreak")
+                .tooltip("EyeCare")
                 .menu(&menu)
                 .show_menu_on_left_click(false)
                 .on_menu_event(|app, event| match event.id().as_ref() {

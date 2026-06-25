@@ -173,7 +173,7 @@ async function renderBreak() {
   app.innerHTML = `
     <div class="break-screen" data-tauri-drag-region>
       ${calmOn ? `<div class="break-bg"><span></span><span></span></div>` : ""}
-      <p class="break-eyebrow">EyeBreak</p>
+      <p class="break-eyebrow">EyeCare</p>
       <h1 class="break-title" id="break-title">Look ~20 feet away</h1>
       <p class="break-sub" id="break-sub">Relax your eyes — let your focus drift to the distance.</p>
       <div class="break-exercise" id="break-exercise" hidden>
@@ -316,7 +316,7 @@ async function renderWidget() {
         <button id="w-take" title="Take a break now">${ICON_EYE}</button>
         <button id="w-skip" title="Skip">${ICON_SKIP}</button>
       </div>
-      <button class="w-restore" id="w-restore" title="Open EyeBreak">${ICON_EXPAND}</button>
+      <button class="w-restore" id="w-restore" title="Open EyeCare">${ICON_EXPAND}</button>
       <div class="w-resize" id="w-resize" title="Drag to resize"></div>
     </div>
   `;
@@ -461,7 +461,7 @@ async function showDashboard() {
     <main class="dash">
       <header class="dash-head">
         <div class="head-left">
-          <h1>EyeBreak</h1>
+          <h1>EyeCare</h1>
           <span class="tag" id="phase-tag">working</span>
         </div>
         <button class="icon-btn" id="btn-settings" title="Settings">${ICON_GEAR}</button>
@@ -486,7 +486,7 @@ async function showDashboard() {
       </section>
 
       <footer class="dash-foot">
-        Closing this window keeps EyeBreak running in the tray and (if enabled) shows the floating widget.
+        Closing this window keeps EyeCare running in the tray and (if enabled) shows the floating widget.
       </footer>
     </main>
   `;
@@ -657,7 +657,7 @@ async function showSettings() {
           <h2><span class="s-dot"></span> Startup</h2>
           <div class="grid">
             <label class="toggle-row">
-              <span>Launch EyeBreak at login</span>
+              <span>Launch EyeCare at login</span>
               <span class="switch">
                 <input type="checkbox" id="f-autostart" />
                 <span class="slider"></span>
@@ -846,7 +846,7 @@ async function showSettings() {
             <span class="update-msg" id="update-msg"></span>
           </div>
           <p class="hint">
-            EyeBreak 0.1.0. Auto-update applies to AppImage / Windows / macOS
+            EyeCare 0.1.0. Auto-update applies to AppImage / Windows / macOS
             builds; the apt-installed <code>.deb</code> updates via your package
             manager.
           </p>
@@ -1147,7 +1147,7 @@ async function showSettings() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = "eyebreak-settings.json";
+    a.download = "eyecare-settings.json";
     a.click();
     URL.revokeObjectURL(url);
     backupMsg.textContent = "Exported ✓";

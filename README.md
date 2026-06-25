@@ -1,4 +1,4 @@
-# EyeBreak
+# EyeCare
 
 Cross-platform **20-20-20** eye-break reminder built with **Tauri v2** (Rust backend + TypeScript/Vite frontend). Runs on Linux, Windows, and macOS from one codebase.
 
@@ -49,7 +49,7 @@ Linux artifacts land in `src-tauri/target/release/bundle/` (`.deb`, AppImage, â€
 Install the `.deb` (shows up in the app menu):
 
 ```bash
-sudo apt install ./src-tauri/target/release/bundle/deb/EyeBreak_0.1.0_amd64.deb
+sudo apt install ./src-tauri/target/release/bundle/deb/EyeCare_0.1.0_amd64.deb
 ```
 
 ## Auto-update (release flow)

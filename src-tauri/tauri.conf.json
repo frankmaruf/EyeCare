@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "EyeBreak",
+  "productName": "EyeCare",
   "version": "0.1.0",
   "identifier": "us.frankmaruf.eyebreak",
   "build": {
@@ -15,7 +15,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "EyeBreak",
+        "title": "EyeCare",
         "width": 760,
         "height": 680,
         "minWidth": 520,
@@ -26,7 +26,7 @@
       {
         "label": "widget",
         "url": "index.html#widget",
-        "title": "EyeBreak widget",
+        "title": "EyeCare widget",
         "width": 160,
         "height": 160,
         "minWidth": 120,
