@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { LogicalSize } from "@tauri-apps/api/dpi";
 
 // ---------------------------------------------------------------------------
 // Shared types (mirror the Rust structs)
@@ -200,18 +201,33 @@ async function renderWidget() {
     }
   });
 
-  // Resize grip (bottom-right corner) — drag to resize the frameless window.
-  document
-    .querySelector<HTMLDivElement>("#w-resize")!
-    .addEventListener("pointerdown", async (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      try {
-        await getCurrentWindow().startResizeDragging("SouthEast");
-      } catch {
-        /* ignore */
-      }
-    });
+  // Resize grip (bottom-right corner): drive the size from JS so it works the
+  // same on every compositor (native WM resize is unreliable on XWayland).
+  const grip = document.querySelector<HTMLDivElement>("#w-resize")!;
+  grip.addEventListener("pointerdown", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const win = getCurrentWindow();
+    const startX = e.screenX;
+    const startY = e.screenY;
+    const startW = window.innerWidth;
+    const startH = window.innerHeight;
+    grip.setPointerCapture(e.pointerId);
+
+    const clamp = (v: number) => Math.max(80, Math.min(480, Math.round(v)));
+    const onMove = (ev: PointerEvent) => {
+      const w = clamp(startW + (ev.screenX - startX));
+      const h = clamp(startH + (ev.screenY - startY));
+      win.setSize(new LogicalSize(w, h));
+    };
+    const onUp = () => {
+      grip.releasePointerCapture(e.pointerId);
+      grip.removeEventListener("pointermove", onMove);
+      grip.removeEventListener("pointerup", onUp);
+    };
+    grip.addEventListener("pointermove", onMove);
+    grip.addEventListener("pointerup", onUp);
+  });
 
   let paused = false;
   pauseBtn.addEventListener("click", (e) => {
