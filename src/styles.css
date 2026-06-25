@@ -301,3 +301,112 @@ input[type="checkbox"] {
   min-height: 1.2em;
   font-size: 0.9rem;
 }
+
+/* settings sub-section heading */
+.section-label {
+  grid-column: 1 / -1;
+  margin-top: 8px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+  font-size: 0.74rem;
+  text-transform: uppercase;
+  letter-spacing: 1.2px;
+  color: var(--accent);
+}
+
+/* ---------------- Floating widget ---------------- */
+
+/* the widget window is transparent so the rounded corners show through */
+body:has(.widget) {
+  background: transparent;
+}
+
+.widget {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  display: grid;
+  place-items: center;
+  background: rgba(14, 23, 38, var(--w-fill, 0.95));
+  border: 1px solid #2b3a57;
+  overflow: hidden;
+  -webkit-user-select: none;
+  user-select: none;
+  cursor: grab;
+}
+
+.widget:active {
+  cursor: grabbing;
+}
+
+.w-ring {
+  position: absolute;
+  inset: 7px;
+  width: calc(100% - 14px);
+  height: calc(100% - 14px);
+}
+
+.w-ring-bg {
+  fill: none;
+  stroke: #22324d;
+  stroke-width: 7;
+}
+
+.w-ring-fg {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 7;
+  stroke-linecap: round;
+  transition: stroke-dashoffset 0.95s linear;
+}
+
+.widget[data-phase="paused"] .w-ring-fg {
+  stroke: #6f7f99;
+}
+
+.w-center {
+  text-align: center;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.w-time {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+  font-size: clamp(14px, 18vmin, 30px);
+}
+
+.widget[data-phase="break"] .w-time,
+.widget[data-phase="break"] .w-ring-fg {
+  color: var(--accent);
+  stroke: var(--accent);
+}
+
+.w-restore {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  font-size: 0.8rem;
+  line-height: 1;
+  border: none;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--muted);
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.widget:hover .w-restore {
+  opacity: 1;
+}
+
+.w-restore:hover {
+  background: rgba(255, 255, 255, 0.16);
+  color: var(--text);
+}

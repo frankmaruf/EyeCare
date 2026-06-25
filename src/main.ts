@@ -7,6 +7,9 @@ import { listen } from "@tauri-apps/api/event";
 
 type Escalation = "gentle" | "standard" | "forced";
 
+type WidgetMode = "off" | "minimized" | "always";
+type WidgetShape = "round" | "squircle" | "square";
+
 interface Settings {
   workIntervalSecs: number;
   breakLengthSecs: number;
@@ -15,6 +18,12 @@ interface Settings {
   snoozeSecs: number;
   maxPostpones: number;
   soundEnabled: boolean;
+  widgetMode: WidgetMode;
+  widgetShape: WidgetShape;
+  widgetSize: number;
+  widgetOpacity: number;
+  widgetX: number | null;
+  widgetY: number | null;
 }
 
 interface TimerSnapshot {
@@ -40,10 +49,15 @@ function fmt(secs: number): string {
 const RADIUS = 120;
 const CIRC = 2 * Math.PI * RADIUS;
 
-function setRing(el: SVGCircleElement, remaining: number, total: number) {
+function setRing(
+  el: SVGCircleElement,
+  remaining: number,
+  total: number,
+  circ: number = CIRC,
+) {
   const frac = total > 0 ? remaining / total : 0;
-  el.style.strokeDasharray = `${CIRC}`;
-  el.style.strokeDashoffset = `${CIRC * (1 - frac)}`;
+  el.style.strokeDasharray = `${circ}`;
+  el.style.strokeDashoffset = `${circ * (1 - frac)}`;
 }
 
 function beep() {
@@ -120,6 +134,7 @@ function renderBreak() {
 
 async function renderDashboard() {
   const s = await invoke<Settings>("get_settings");
+  let current = s; // last known full settings, so saves preserve unshown fields
 
   app.innerHTML = `
     <main class="dash">
@@ -174,6 +189,28 @@ async function renderDashboard() {
           <label class="check">
             <input type="checkbox" id="f-sound" /> Play a sound when a break starts
           </label>
+
+          <span class="section-label">Floating widget (shows when minimized)</span>
+          <label>Widget mode
+            <select id="f-wmode">
+              <option value="off">Off</option>
+              <option value="minimized">When minimized</option>
+              <option value="always">Always on top</option>
+            </select>
+          </label>
+          <label>Widget shape
+            <select id="f-wshape">
+              <option value="round">Round</option>
+              <option value="squircle">Squircle</option>
+              <option value="square">Square</option>
+            </select>
+          </label>
+          <label>Widget size <span class="unit">(px)</span>
+            <input type="number" id="f-wsize" min="80" max="320" />
+          </label>
+          <label>Widget opacity <span class="unit">(%)</span>
+            <input type="number" id="f-wopacity" min="20" max="100" />
+          </label>
         </div>
         <div class="save-row">
           <button class="btn" id="btn-save">Save settings</button>
@@ -203,11 +240,16 @@ async function renderDashboard() {
   const fSnooze = document.querySelector<HTMLInputElement>("#f-snooze")!;
   const fMax = document.querySelector<HTMLInputElement>("#f-max")!;
   const fSound = document.querySelector<HTMLInputElement>("#f-sound")!;
+  const fWMode = document.querySelector<HTMLSelectElement>("#f-wmode")!;
+  const fWShape = document.querySelector<HTMLSelectElement>("#f-wshape")!;
+  const fWSize = document.querySelector<HTMLInputElement>("#f-wsize")!;
+  const fWOpacity = document.querySelector<HTMLInputElement>("#f-wopacity")!;
   const btnSave = document.querySelector<HTMLButtonElement>("#btn-save")!;
   const savedMsg = document.querySelector<HTMLSpanElement>("#saved-msg")!;
 
   // --- fill the form from current settings ---
   function fillForm(cfg: Settings) {
+    current = cfg;
     fWork.value = String(Math.round(cfg.workIntervalSecs / 60));
     fBreak.value = String(cfg.breakLengthSecs);
     fWarn.value = String(cfg.preBreakWarningSecs);
@@ -215,6 +257,10 @@ async function renderDashboard() {
     fSnooze.value = String(Math.round(cfg.snoozeSecs / 60));
     fMax.value = String(cfg.maxPostpones);
     fSound.checked = cfg.soundEnabled;
+    fWMode.value = cfg.widgetMode;
+    fWShape.value = cfg.widgetShape;
+    fWSize.value = String(cfg.widgetSize);
+    fWOpacity.value = String(cfg.widgetOpacity);
   }
   fillForm(s);
 
@@ -230,6 +276,7 @@ async function renderDashboard() {
   // --- save settings ---
   btnSave.addEventListener("click", async () => {
     const next: Settings = {
+      ...current, // preserve fields not shown here (e.g. widget position)
       workIntervalSecs: Number(fWork.value) * 60,
       breakLengthSecs: Number(fBreak.value),
       preBreakWarningSecs: Number(fWarn.value),
@@ -237,6 +284,10 @@ async function renderDashboard() {
       snoozeSecs: Number(fSnooze.value) * 60,
       maxPostpones: Number(fMax.value),
       soundEnabled: fSound.checked,
+      widgetMode: fWMode.value as WidgetMode,
+      widgetShape: fWShape.value as WidgetShape,
+      widgetSize: Number(fWSize.value),
+      widgetOpacity: Number(fWOpacity.value),
     };
     const saved = await invoke<Settings>("set_settings", { settings: next });
     fillForm(saved); // reflect any clamping the backend applied
@@ -265,12 +316,73 @@ async function renderDashboard() {
 }
 
 // ---------------------------------------------------------------------------
+// Floating widget view (loaded at index.html#widget)
+// ---------------------------------------------------------------------------
+
+const WIDGET_CIRC = 2 * Math.PI * 44;
+
+function applyWidgetStyle(s: Settings) {
+  const card = document.querySelector<HTMLDivElement>(".widget");
+  if (!card) return;
+  const radius =
+    s.widgetShape === "round"
+      ? "50%"
+      : s.widgetShape === "square"
+        ? "8px"
+        : "30px";
+  card.style.borderRadius = radius;
+  card.style.setProperty("--w-fill", String(s.widgetOpacity / 100));
+}
+
+async function renderWidget() {
+  const s = await invoke<Settings>("get_settings");
+
+  app.innerHTML = `
+    <div class="widget" data-tauri-drag-region>
+      <svg class="w-ring" viewBox="0 0 100 100" data-tauri-drag-region>
+        <circle class="w-ring-bg" cx="50" cy="50" r="44"></circle>
+        <circle class="w-ring-fg" cx="50" cy="50" r="44" transform="rotate(-90 50 50)"></circle>
+      </svg>
+      <div class="w-center" data-tauri-drag-region>
+        <div class="w-time" id="w-time">--:--</div>
+      </div>
+      <button class="w-restore" id="w-restore" title="Open EyeBreak">⤢</button>
+    </div>
+  `;
+
+  applyWidgetStyle(s);
+
+  const card = document.querySelector<HTMLDivElement>(".widget")!;
+  const ringFg = document.querySelector<SVGCircleElement>(".w-ring-fg")!;
+  const timeEl = document.querySelector<HTMLDivElement>("#w-time")!;
+
+  document
+    .querySelector<HTMLButtonElement>("#w-restore")!
+    .addEventListener("click", (e) => {
+      e.stopPropagation();
+      invoke("show_main");
+    });
+
+  const update = (t: TimerSnapshot) => {
+    timeEl.textContent = fmt(t.remaining);
+    setRing(ringFg, t.remaining, t.total, WIDGET_CIRC);
+    card.dataset.phase = t.paused ? "paused" : t.phase;
+  };
+
+  update(await invoke<TimerSnapshot>("get_timer"));
+  await listen<TimerSnapshot>("timer:tick", (e) => update(e.payload));
+  await listen<Settings>("settings:changed", (e) => applyWidgetStyle(e.payload));
+}
+
+// ---------------------------------------------------------------------------
 // Boot — pick the view from the URL hash
 // ---------------------------------------------------------------------------
 
 window.addEventListener("DOMContentLoaded", () => {
   if (location.hash.startsWith("#break")) {
     renderBreak();
+  } else if (location.hash.startsWith("#widget")) {
+    renderWidget();
   } else {
     renderDashboard();
   }

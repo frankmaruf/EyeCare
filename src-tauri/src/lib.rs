@@ -38,6 +38,38 @@ struct Settings {
     max_postpones: u32,
     /// Play a sound when the break starts (handled in the webview).
     sound_enabled: bool,
+
+    // --- Floating widget (§4.12) ---
+    /// "off" | "minimized" | "always".
+    #[serde(default = "d_widget_mode")]
+    widget_mode: String,
+    /// "round" | "squircle" | "square".
+    #[serde(default = "d_widget_shape")]
+    widget_shape: String,
+    /// Square edge length, logical px.
+    #[serde(default = "d_widget_size")]
+    widget_size: u32,
+    /// Fill opacity, 20–100.
+    #[serde(default = "d_widget_opacity")]
+    widget_opacity: u32,
+    /// Last on-screen position (physical px); None = let the OS place it.
+    #[serde(default)]
+    widget_x: Option<f64>,
+    #[serde(default)]
+    widget_y: Option<f64>,
+}
+
+fn d_widget_mode() -> String {
+    "minimized".into()
+}
+fn d_widget_shape() -> String {
+    "squircle".into()
+}
+fn d_widget_size() -> u32 {
+    140
+}
+fn d_widget_opacity() -> u32 {
+    95
 }
 
 impl Default for Settings {
@@ -50,6 +82,12 @@ impl Default for Settings {
             snooze_secs: 3 * 60,
             max_postpones: 2,
             sound_enabled: false,
+            widget_mode: d_widget_mode(),
+            widget_shape: d_widget_shape(),
+            widget_size: d_widget_size(),
+            widget_opacity: d_widget_opacity(),
+            widget_x: None,
+            widget_y: None,
         }
     }
 }
@@ -66,6 +104,14 @@ fn clamp_settings(mut s: Settings) -> Settings {
     }
     if !matches!(s.escalation.as_str(), "gentle" | "standard" | "forced") {
         s.escalation = "standard".into();
+    }
+    s.widget_size = s.widget_size.clamp(80, 320);
+    s.widget_opacity = s.widget_opacity.clamp(20, 100);
+    if !matches!(s.widget_mode.as_str(), "off" | "minimized" | "always") {
+        s.widget_mode = "minimized".into();
+    }
+    if !matches!(s.widget_shape.as_str(), "round" | "squircle" | "square") {
+        s.widget_shape = "squircle".into();
     }
     s
 }
@@ -214,11 +260,60 @@ fn start_break(app: &AppHandle) {
     }
 
     let _ = builder.build();
+    update_widget_visibility(app);
 }
 
 fn close_break_window(app: &AppHandle) {
     if let Some(w) = app.get_webview_window("break") {
         let _ = w.close();
+    }
+}
+
+/// Apply persisted size/position to the widget window and push the current
+/// settings to the widget UI (shape/opacity are CSS-side).
+fn apply_widget_config(app: &AppHandle) {
+    let s = {
+        let state = app.state::<AppState>();
+        let s = state.settings.lock().unwrap().clone();
+        s
+    };
+    if let Some(w) = app.get_webview_window("widget") {
+        let size = s.widget_size as f64;
+        let _ = w.set_size(tauri::LogicalSize::new(size, size));
+        if let (Some(x), Some(y)) = (s.widget_x, s.widget_y) {
+            let _ = w.set_position(tauri::PhysicalPosition::new(x, y));
+        }
+    }
+    let _ = app.emit("settings:changed", &s);
+}
+
+/// Show the widget when it should be visible (mode = always, or mode =
+/// minimized and the main window is hidden), hide it otherwise. Suppressed
+/// while a break window is open. Idempotent — safe to call every tick.
+fn update_widget_visibility(app: &AppHandle) {
+    let widget = match app.get_webview_window("widget") {
+        Some(w) => w,
+        None => return,
+    };
+    let mode = {
+        let state = app.state::<AppState>();
+        let m = state.settings.lock().unwrap().widget_mode.clone();
+        m
+    };
+    let break_open = app.get_webview_window("break").is_some();
+    let main_visible = app
+        .get_webview_window("main")
+        .and_then(|w| w.is_visible().ok())
+        .unwrap_or(true);
+
+    let want = mode != "off" && !break_open && (mode == "always" || !main_visible);
+    let is_visible = widget.is_visible().unwrap_or(false);
+
+    if want && !is_visible {
+        let _ = widget.show();
+        let _ = widget.set_always_on_top(true);
+    } else if !want && is_visible {
+        let _ = widget.hide();
     }
 }
 
@@ -248,6 +343,7 @@ fn emit_tick(app: &AppHandle) {
     };
     let _ = app.emit("timer:tick", snap.clone());
     update_tray(app, &snap);
+    update_widget_visibility(app);
 }
 
 fn show_main_window(app: &AppHandle) {
@@ -256,6 +352,7 @@ fn show_main_window(app: &AppHandle) {
         let _ = w.unminimize();
         let _ = w.set_focus();
     }
+    update_widget_visibility(app);
 }
 
 // ---------------------------------------------------------------------------
@@ -316,6 +413,7 @@ fn set_settings(app: AppHandle, state: State<AppState>, settings: Settings) -> S
             t.remaining = s.work_interval_secs;
         }
     }
+    apply_widget_config(&app);
     emit_tick(&app);
     cleaned
 }
@@ -542,16 +640,35 @@ pub fn run() {
                 })
                 .build(app)?;
 
-            // Closing the main window hides it to the tray instead of quitting.
+            // Closing the main window hides it to the tray instead of quitting;
+            // that's when the floating widget should appear (if enabled).
             if let Some(main) = app.get_webview_window("main") {
                 let main_clone = main.clone();
                 main.on_window_event(move |event| {
                     if let WindowEvent::CloseRequested { api, .. } = event {
                         api.prevent_close();
                         let _ = main_clone.hide();
+                        update_widget_visibility(main_clone.app_handle());
                     }
                 });
             }
+
+            // Floating widget: apply saved size/position and remember where the
+            // user drags it.
+            apply_widget_config(&handle);
+            if let Some(widget) = app.get_webview_window("widget") {
+                let wh = handle.clone();
+                widget.on_window_event(move |event| {
+                    if let WindowEvent::Moved(pos) = event {
+                        let state = wh.state::<AppState>();
+                        let mut s = state.settings.lock().unwrap();
+                        s.widget_x = Some(pos.x as f64);
+                        s.widget_y = Some(pos.y as f64);
+                        save_settings(&wh, &s);
+                    }
+                });
+            }
+            update_widget_visibility(&handle);
 
             // Start the authoritative 1-second timer.
             run_timer(handle);
