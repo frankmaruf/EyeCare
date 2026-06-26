@@ -264,6 +264,10 @@ async function renderBreak() {
       noteEl.textContent = "No postpones left — finish the break 🙂";
     }
   });
+  // Esc is a keyboard escape hatch from the break overlay.
+  window.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") invoke("timer_skip");
+  });
 
   const update = (t: TimerSnapshot) => {
     if (t.phase !== "break") return;
@@ -1323,17 +1327,31 @@ document.addEventListener("click", (e) => {
   }
 });
 
-function boot() {
+async function boot() {
   // Apply accessibility prefs to every window, and keep them in sync.
   invoke<Settings>("get_settings").then(applyAppearance).catch(() => {});
   listen<Settings>("settings:changed", (e) => applyAppearance(e.payload));
 
-  if (location.hash.startsWith("#break")) {
-    renderBreak();
-  } else if (location.hash.startsWith("#widget")) {
-    renderWidget();
-  } else {
-    renderMainWindow();
+  try {
+    if (location.hash.startsWith("#break")) {
+      await renderBreak();
+    } else if (location.hash.startsWith("#widget")) {
+      await renderWidget();
+    } else {
+      await renderMainWindow();
+    }
+  } catch (err) {
+    // Never leave a blank, un-closable window: show a minimal escape hatch so
+    // a render failure can't trap the user behind an always-on-top white pane.
+    console.error("EyeCare render error", err);
+    app.innerHTML = `
+      <div style="display:flex;flex-direction:column;gap:14px;align-items:center;justify-content:center;height:100%;padding:24px;text-align:center;color:#e8eef7;font-family:system-ui,sans-serif;background:#0e1726">
+        <p style="margin:0;max-width:32ch">EyeCare couldn't draw this window. You can close it safely — the timer keeps running in the tray.</p>
+        <button id="ec-escape" style="padding:10px 20px;border:0;border-radius:10px;background:#34d399;color:#0e1726;font-weight:600;cursor:pointer">Close window</button>
+      </div>`;
+    document
+      .getElementById("ec-escape")
+      ?.addEventListener("click", () => getCurrentWindow().close());
   }
 }
 
