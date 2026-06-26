@@ -38,7 +38,11 @@ Built with [Tauri v2](https://tauri.app) — a Rust core and a tiny web UI.
 - Quick actions on hover (pause / take break / skip), one-click restore.
 
 <div align="center">
-<img src="docs/img/widget.png" width="180" alt="EyeCare floating widget" />
+<img src="docs/img/widget.png" height="200" alt="EyeCare floating widget" />
+&nbsp;&nbsp;
+<img src="docs/img/widget-hover.png" height="200" alt="EyeCare floating widget on hover, showing pause / take-break / skip buttons" />
+<br />
+<sub>At rest · and on hover — pause, take a break, skip (plus resize & restore).</sub>
 </div>
 
 **Wellbeing nudges** (all optional)
