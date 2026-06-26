@@ -1328,6 +1328,7 @@ document.addEventListener("click", (e) => {
 });
 
 async function boot() {
+  (window as unknown as { __ecBooted: boolean }).__ecBooted = true;
   // Apply accessibility prefs to every window, and keep them in sync.
   invoke<Settings>("get_settings").then(applyAppearance).catch(() => {});
   listen<Settings>("settings:changed", (e) => applyAppearance(e.payload));

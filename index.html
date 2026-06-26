@@ -5,9 +5,47 @@
     <link rel="stylesheet" href="/src/styles.css" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>EyeCare</title>
-    <script type="module" src="/src/main.ts" defer></script>
+    <!-- Early, classic (non-module) error catcher. Runs immediately regardless
+         of module timing, so any failure shows on screen instead of a blank
+         white window — and tells us whether the module even executed. -->
+    <script>
+      (function () {
+        function show(msg) {
+          var el = document.getElementById("ec-err");
+          if (!el) {
+            el = document.createElement("pre");
+            el.id = "ec-err";
+            el.style.cssText =
+              "position:fixed;inset:0;margin:0;padding:16px;overflow:auto;background:#0e1726;color:#ff9a9a;font:12px/1.5 ui-monospace,monospace;white-space:pre-wrap;z-index:99999";
+            (document.body || document.documentElement).appendChild(el);
+          }
+          el.textContent += msg + "\n\n";
+        }
+        window.addEventListener("error", function (e) {
+          show(
+            "ERROR: " +
+              (e.message || e.error) +
+              (e.filename ? "  @ " + e.filename + ":" + e.lineno : ""),
+          );
+        });
+        window.addEventListener("unhandledrejection", function (e) {
+          var r = e.reason;
+          show("PROMISE REJECTED: " + (r && (r.stack || r.message || r)));
+        });
+        // Marker so we can tell "module never ran" (placeholder stays) from
+        // "module ran and replaced #app".
+        window.__ecBooted = false;
+      })();
+    </script>
+    <script type="module" src="/src/main.ts"></script>
   </head>
   <body>
-    <div id="app"></div>
+    <div id="app">
+      <div
+        style="display:flex;align-items:center;justify-content:center;height:100vh;color:#93a3bd;font:14px system-ui,sans-serif"
+      >
+        Starting EyeCare…
+      </div>
+    </div>
   </body>
 </html>
