@@ -47,6 +47,10 @@ jobs:
       contents: write
     strategy:
       fail-fast: false
+      # Serialize the platforms: tauri-action rewrites the shared latest.json on
+      # each job (delete + re-upload), and parallel jobs race — one gets a 404
+      # deleting an asset another already replaced. One at a time avoids it.
+      max-parallel: 1
       matrix:
         include:
           - platform: macos-latest # Apple Silicon + Intel (universal)
