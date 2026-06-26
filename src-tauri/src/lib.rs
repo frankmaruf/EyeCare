@@ -1076,6 +1076,19 @@ fn set_settings(app: AppHandle, state: State<AppState>, settings: Settings) -> S
         if t.phase == Phase::Working && t.remaining > s.work_interval_secs {
             t.remaining = s.work_interval_secs;
         }
+        // Likewise cap each wellbeing-nudge countdown to its (possibly new)
+        // interval, so lowering an interval — or enabling a nudge — takes
+        // effect within that interval instead of waiting out the old one.
+        t.blink_remaining = t.blink_remaining.clamp(1, s.blink_interval_secs.max(1));
+        t.hydration_remaining = t
+            .hydration_remaining
+            .clamp(1, s.hydration_interval_secs.max(1));
+        t.posture_remaining = t
+            .posture_remaining
+            .clamp(1, s.posture_interval_secs.max(1));
+        t.eyedrops_remaining = t
+            .eyedrops_remaining
+            .clamp(1, s.eyedrops_interval_secs.max(1));
     }
     apply_widget_config(&app);
     #[cfg(desktop)]

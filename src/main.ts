@@ -1316,7 +1316,7 @@ document.addEventListener("click", (e) => {
   }
 });
 
-window.addEventListener("DOMContentLoaded", () => {
+function boot() {
   // Apply accessibility prefs to every window, and keep them in sync.
   invoke<Settings>("get_settings").then(applyAppearance).catch(() => {});
   listen<Settings>("settings:changed", (e) => applyAppearance(e.payload));
@@ -1328,4 +1328,14 @@ window.addEventListener("DOMContentLoaded", () => {
   } else {
     renderMainWindow();
   }
-});
+}
+
+// Run boot whether or not DOMContentLoaded has already fired. As a deferred ES
+// module this script can execute *after* the event (notably on WebView2 /
+// Windows), so a plain addEventListener would never fire and the window would
+// stay blank (white screen). Guard on readyState instead.
+if (document.readyState === "loading") {
+  window.addEventListener("DOMContentLoaded", boot);
+} else {
+  boot();
+}
