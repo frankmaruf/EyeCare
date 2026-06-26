@@ -641,8 +641,9 @@ fn start_break(app: &AppHandle) {
 
     let mut builder = WebviewWindowBuilder::new(app, "break", WebviewUrl::App(url.into()))
         .title("EyeCare — break time")
-        .inner_size(560.0, 380.0)
-        .resizable(false)
+        .inner_size(580.0, 620.0)
+        .min_inner_size(420.0, 460.0)
+        .resizable(true)
         .always_on_top(forced)
         .decorations(!forced)
         .skip_taskbar(forced)

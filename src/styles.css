@@ -25,14 +25,26 @@ body {
   height: 100%;
 }
 
+/* App-shell layout. `body` is the fixed window frame (no scroll); `#app` is an
+   absolutely-positioned scroll container filling it exactly. This avoids the
+   WebKitGTK `vh`/`%` over-reporting that left a phantom scrollbar, while still
+   letting tall views (settings) scroll inside #app. */
 body {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
   background:
     radial-gradient(1200px 600px at 50% -10%, #1b2c49 0%, transparent 60%),
     var(--bg);
 }
 
 #app {
-  min-height: 100vh;
+  position: absolute;
+  inset: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
 }
 
 /* ---------------- Dashboard ---------------- */
@@ -49,7 +61,12 @@ body {
 /* dashboard fills the window; ring + controls centre in the free space so a
    large / maximized window doesn't look top-heavy */
 .dash:not(.settings-page) {
-  min-height: 100vh;
+  flex: 1 1 auto;
+}
+
+/* settings keeps full content height so #app scrolls instead of clipping it */
+.dash.settings-page {
+  flex: 0 0 auto;
 }
 
 .dash-main {
@@ -271,15 +288,17 @@ input[type="checkbox"] {
 
 .break-screen {
   position: relative;
-  overflow: hidden;
-  min-height: 100vh;
+  overflow-x: hidden;
+  overflow-y: auto;
+  flex: 1 1 auto;
+  box-sizing: border-box;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   text-align: center;
-  gap: 8px;
-  padding: 24px;
+  gap: 6px;
+  padding: 18px 24px;
   background:
     radial-gradient(900px 500px at 50% 0%, #1f3a52 0%, transparent 65%),
     var(--bg);
@@ -295,6 +314,7 @@ input[type="checkbox"] {
   position: absolute;
   inset: 0;
   z-index: 0;
+  overflow: hidden;
   pointer-events: none;
 }
 
@@ -409,7 +429,8 @@ input[type="checkbox"] {
 
 .break-title {
   margin: 6px 0 0;
-  font-size: 2.2rem;
+  font-size: clamp(1.5rem, 6vw, 2.2rem);
+  line-height: 1.15;
   font-weight: 600;
 }
 
@@ -420,8 +441,9 @@ input[type="checkbox"] {
 }
 
 .break-count {
-  margin: 18px 0 6px;
-  font-size: 4rem;
+  margin: 12px 0 6px;
+  font-size: clamp(2.6rem, 11vh, 4rem);
+  line-height: 1;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   color: var(--accent);
