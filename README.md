@@ -61,7 +61,7 @@ Built with [Tauri v2](https://tauri.app) — a Rust core and a tiny web UI.
 - Per-feature explanations in Settings so every option is self-describing.
 
 <div align="center">
-<img src="docs/img/break.png" width="540" alt="EyeCare break screen" />
+<img src="docs/img/break-screen.png" width="460" alt="EyeCare break screen" />
 </div>
 
 ---
