@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { getVersion } from "@tauri-apps/api/app";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { LogicalSize } from "@tauri-apps/api/dpi";
@@ -884,19 +885,6 @@ async function showSettings() {
         </section>
 
         <section class="card s-card">
-          <h2><span class="s-dot"></span> Updates</h2>
-          <div class="update-row">
-            <button class="btn ghost" id="btn-checkupdate">Check for updates</button>
-            <span class="update-msg" id="update-msg"></span>
-          </div>
-          <p class="hint">
-            EyeCare 0.1.0. Auto-update applies to AppImage / Windows / macOS
-            builds; the apt-installed <code>.deb</code> updates via your package
-            manager.
-          </p>
-        </section>
-
-        <section class="card s-card">
           <h2><span class="s-dot"></span> Backup</h2>
           <div class="update-row">
             <button class="btn ghost" id="btn-export">Export settings</button>
@@ -937,6 +925,19 @@ async function showSettings() {
               <span class="slider"></span>
             </span>
           </label>
+        </section>
+
+        <section class="card s-card">
+          <h2><span class="s-dot"></span> Updates</h2>
+          <div class="update-row">
+            <button class="btn ghost" id="btn-checkupdate">Check for updates</button>
+            <span class="update-msg" id="update-msg"></span>
+          </div>
+          <p class="hint">
+            <span id="app-ver">EyeCare</span>. Auto-update applies to AppImage /
+            Windows / macOS builds; the apt-installed <code>.deb</code> updates
+            via your package manager.
+          </p>
         </section>
       </div>
 
@@ -1190,6 +1191,12 @@ async function showSettings() {
   // --- updates ---
   const updBtn = $<HTMLButtonElement>("#btn-checkupdate");
   const updMsg = $<HTMLSpanElement>("#update-msg");
+  // Show the real installed version (was previously hardcoded).
+  getVersion()
+    .then((v) => {
+      $<HTMLSpanElement>("#app-ver").textContent = `EyeCare ${v}`;
+    })
+    .catch(() => {});
   updBtn.addEventListener("click", async () => {
     updMsg.textContent = "Checking…";
     updBtn.disabled = true;

@@ -1,6 +1,6 @@
 [package]
 name = "eyecare"
-version = "0.1.2"
+version = "0.1.3"
 description = "EyeCare — cross-platform eye-health & break reminder"
 authors = ["Md. Abdullah Al Maruf"]
 edition = "2021"
