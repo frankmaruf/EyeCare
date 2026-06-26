@@ -11,15 +11,28 @@
     <script>
       (function () {
         function show(msg) {
-          var el = document.getElementById("ec-err");
-          if (!el) {
-            el = document.createElement("pre");
-            el.id = "ec-err";
-            el.style.cssText =
-              "position:fixed;inset:0;margin:0;padding:16px;overflow:auto;background:#0e1726;color:#ff9a9a;font:12px/1.5 ui-monospace,monospace;white-space:pre-wrap;z-index:99999";
-            (document.body || document.documentElement).appendChild(el);
+          var wrap = document.getElementById("ec-err");
+          if (!wrap) {
+            wrap = document.createElement("div");
+            wrap.id = "ec-err";
+            wrap.style.cssText =
+              "position:fixed;left:0;right:0;bottom:0;max-height:45vh;overflow:auto;background:#1a0f14ee;color:#ff9a9a;border-top:1px solid #5b2b34;font:12px/1.5 ui-monospace,monospace;z-index:99999";
+            var close = document.createElement("button");
+            close.textContent = "✕ dismiss";
+            close.style.cssText =
+              "position:sticky;top:0;float:right;margin:6px;padding:4px 10px;border:0;border-radius:6px;background:#5b2b34;color:#ffd6d6;cursor:pointer";
+            close.onclick = function () {
+              wrap.remove();
+            };
+            var pre = document.createElement("pre");
+            pre.id = "ec-err-body";
+            pre.style.cssText =
+              "margin:0;padding:14px;white-space:pre-wrap;word-break:break-word";
+            wrap.appendChild(close);
+            wrap.appendChild(pre);
+            (document.body || document.documentElement).appendChild(wrap);
           }
-          el.textContent += msg + "\n\n";
+          document.getElementById("ec-err-body").textContent += msg + "\n\n";
         }
         window.addEventListener("error", function (e) {
           show(
