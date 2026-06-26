@@ -1,8 +1,13 @@
 name: Release
 
-# Build installers for Linux, Windows and macOS and attach them to a GitHub
-# Release. Triggers when you push a version tag (e.g. `git tag v0.1.0 && git
-# push --tags`), or manually from the Actions tab.
+# Build installers for Linux, Windows and macOS and attach them to a single
+# GitHub Release. Triggers when you push a version tag (e.g. `git tag v0.1.0 &&
+# git push --tags`), or manually from the Actions tab.
+#
+# One `create-release` job makes the (draft) release first; every platform then
+# uploads to that same release id, and a final job publishes it. This avoids the
+# race where parallel matrix jobs each create a duplicate-tag draft and the
+# assets (and the updater's latest.json) end up split across two releases.
 on:
   push:
     tags:
@@ -10,7 +15,34 @@ on:
   workflow_dispatch:
 
 jobs:
-  release:
+  create-release:
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    outputs:
+      release_id: ${{ steps.create-release.outputs.result }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create draft release
+        id: create-release
+        uses: actions/github-script@v7
+        with:
+          result-encoding: string
+          script: |
+            const tag = context.ref.replace('refs/tags/', '');
+            const { data } = await github.rest.repos.createRelease({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              tag_name: tag,
+              name: `EyeCare ${tag}`,
+              body: 'Download the installer for your platform below.',
+              draft: true,
+              prerelease: false,
+            });
+            return data.id;
+
+  build-tauri:
+    needs: create-release
     permissions:
       contents: write
     strategy:
@@ -60,7 +92,7 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
-      - name: Build & release
+      - name: Build & upload to the release
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -68,9 +100,23 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
-          tagName: ${{ github.ref_name }}
-          releaseName: "EyeCare ${{ github.ref_name }}"
-          releaseBody: "Download the installer for your platform below."
-          releaseDraft: true
-          prerelease: false
+          releaseId: ${{ needs.create-release.outputs.release_id }}
           args: ${{ matrix.args }}
+
+  publish-release:
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    needs: [create-release, build-tauri]
+    steps:
+      - name: Publish release
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.repos.updateRelease({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              release_id: ${{ needs.create-release.outputs.release_id }},
+              draft: false,
+              make_latest: 'true',
+            });
