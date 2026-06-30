@@ -94,6 +94,7 @@ pub fn x11_skip_taskbar(xid: u32) {
 #[cfg(not(target_os = "linux"))]
 pub fn x11_skip_taskbar(_xid: u32) {}
 
+
 /// Play a short completion chime at the given volume (0–100). Best-effort via a
 /// system player; silently does nothing if none is present.
 #[cfg(target_os = "linux")]

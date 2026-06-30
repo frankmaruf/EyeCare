@@ -323,6 +323,37 @@ fn x11_window_id(win: &i_slint_backend_winit::winit::window::Window) -> Option<u
     }
 }
 
+/// Show + raise + focus the dashboard, and drop its minimize button (X11) so it
+/// can't be sent to the taskbar. Used by --show, the tray, and the widget.
+fn raise_main(m: &MainWindow) {
+    let _ = m.show();
+    m.window().with_winit_window(|w| {
+        w.set_minimized(false);
+        w.set_visible(true);
+        w.focus_window();
+        // keep the dashboard out of the taskbar — it's a tray app; open/close it
+        // from the tray or widget. Minimizing then just hides it (no taskbar
+        // entry), restore from the tray.
+        #[cfg(target_os = "linux")]
+        if let Some(xid) = x11_window_id(w) {
+            platform::x11_skip_taskbar(xid);
+        }
+    });
+    #[cfg(target_os = "linux")]
+    {
+        let mw = m.as_weak();
+        slint::Timer::single_shot(std::time::Duration::from_millis(600), move || {
+            if let Some(m) = mw.upgrade() {
+                m.window().with_winit_window(|w| {
+                    if let Some(xid) = x11_window_id(w) {
+                        platform::x11_skip_taskbar(xid);
+                    }
+                });
+            }
+        });
+    }
+}
+
 /// Single-instance guard (spec §5): if a live instance holds the lock, exit.
 #[cfg(target_os = "linux")]
 fn ensure_single_instance() {
@@ -793,12 +824,7 @@ fn main() -> Result<(), slint::PlatformError> {
             let Some(w) = mw.upgrade() else { return };
             populate_settings(&w, &settings.borrow());
             w.set_show_settings(true);
-            let _ = w.show();
-            w.window().with_winit_window(|win| {
-                win.set_minimized(false);
-                win.set_visible(true);
-                win.focus_window();
-            });
+            raise_main(&w);
         });
     }
 
@@ -1044,7 +1070,8 @@ fn main() -> Result<(), slint::PlatformError> {
         let main_w = main_win.as_weak();
         widget_win.on_restore(move || {
             if let Some(w) = main_w.upgrade() {
-                let _ = w.show();
+                w.set_show_settings(false);
+                raise_main(&w);
             }
         });
     }
@@ -1155,23 +1182,6 @@ fn main() -> Result<(), slint::PlatformError> {
             slint::TimerMode::Repeated,
             Duration::from_millis(150),
             move || {
-                // Minimize → hide to the tray (not the taskbar): when the
-                // dashboard gets minimized, un-minimize it and hide so it leaves
-                // the taskbar entirely. Re-open via the tray / widget. Only act
-                // while it's actually shown — touching a just-closed (hidden)
-                // window re-maps it for a frame and makes it flicker/jump.
-                if let Some(m) = main_w.upgrade() {
-                    if m.window().is_visible() {
-                        let min = m
-                            .window()
-                            .with_winit_window(|w| w.is_minimized().unwrap_or(false))
-                            .unwrap_or(false);
-                        if min {
-                            m.window().with_winit_window(|w| w.set_minimized(false));
-                            let _ = m.hide();
-                        }
-                    }
-                }
                 // live countdown in the tray tooltip (§4.11)
                 {
                     let t = timer.borrow();
@@ -1195,25 +1205,14 @@ fn main() -> Result<(), slint::PlatformError> {
                         Open => {
                             if let Some(m) = main_w.upgrade() {
                                 m.set_show_settings(false);
-                                let _ = m.show();
-                                m.window().with_winit_window(|win| {
-                                    win.set_minimized(false);
-                                    win.set_visible(true);
-                                    win.focus_window();
-                                    win.request_redraw();
-                                });
+                                raise_main(&m);
                             }
                         }
                         Settings => {
                             if let Some(m) = main_w.upgrade() {
                                 populate_settings(&m, &settings.borrow());
                                 m.set_show_settings(true);
-                                let _ = m.show();
-                                m.window().with_winit_window(|win| {
-                                    win.set_minimized(false);
-                                    win.set_visible(true);
-                                    win.focus_window();
-                                });
+                                raise_main(&m);
                             }
                         }
                         Pause => {
@@ -1288,8 +1287,18 @@ fn main() -> Result<(), slint::PlatformError> {
     // Tray-first: the dashboard stays hidden (lives in the tray) unless launched
     // with --show (the app-menu entry passes it). Autostart/boot has no flag, so
     // it comes up silently in the tray. Open later via the tray or the widget.
+    // Show the dashboard from INSIDE the loop (a show() issued before
+    // run_event_loop_until_quit() doesn't map the window).
     if std::env::args().any(|a| a == "--show") {
-        let _ = main_win.show();
+        let mw = main_win.as_weak();
+        slint::Timer::single_shot(Duration::from_millis(50), move || {
+            if let Some(m) = mw.upgrade() {
+                raise_main(&m);
+            }
+        });
     }
-    slint::run_event_loop()
+    // run_event_loop() would quit the moment the last window hides (e.g. dashboard
+    // minimized + widget hidden) and kill the whole app. A tray app must outlive
+    // its windows — keep running until the tray's Quit calls quit_event_loop().
+    slint::run_event_loop_until_quit()
 }
