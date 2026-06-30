@@ -7,6 +7,8 @@
 mod settings;
 mod stats;
 mod timer;
+#[cfg(target_os = "linux")]
+mod tray;
 
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
@@ -730,6 +732,71 @@ fn main() -> Result<(), slint::PlatformError> {
             }
         });
     }
+
+    // ---- system tray (Linux; StatusNotifierItem) ----
+    #[cfg(target_os = "linux")]
+    let _tray = {
+        let (tx, rx) = std::sync::mpsc::channel::<tray::Action>();
+        let handle = tray::spawn(tx);
+        let dispatch = slint::Timer::default();
+        let main_w = main_win.as_weak();
+        let widget_w = widget_win.as_weak();
+        let timer = timer.clone();
+        let settings = settings.clone();
+        let render = render.clone();
+        let sync_break = sync_break.clone();
+        let widget_visible = Rc::new(Cell::new(true));
+        dispatch.start(
+            slint::TimerMode::Repeated,
+            Duration::from_millis(150),
+            move || {
+                while let Ok(action) = rx.try_recv() {
+                    use tray::Action::*;
+                    match action {
+                        Open => {
+                            if let Some(m) = main_w.upgrade() {
+                                let _ = m.show();
+                                m.window().with_winit_window(|win| {
+                                    win.set_visible(true);
+                                    win.focus_window();
+                                });
+                            }
+                        }
+                        Pause => {
+                            let p = !timer.borrow().paused;
+                            timer.borrow_mut().set_paused(p);
+                            render();
+                        }
+                        Take => {
+                            timer.borrow_mut().take_break(&settings.borrow());
+                            sync_break();
+                            render();
+                        }
+                        Skip => {
+                            timer.borrow_mut().skip(&settings.borrow());
+                            sync_break();
+                            render();
+                        }
+                        ToggleWidget => {
+                            let v = !widget_visible.get();
+                            widget_visible.set(v);
+                            if let Some(wd) = widget_w.upgrade() {
+                                if v {
+                                    let _ = wd.show();
+                                } else {
+                                    let _ = wd.hide();
+                                }
+                            }
+                        }
+                        Quit => {
+                            let _ = slint::quit_event_loop();
+                        }
+                    }
+                }
+            },
+        );
+        (handle, dispatch)
+    };
 
     main_win.run()
 }
