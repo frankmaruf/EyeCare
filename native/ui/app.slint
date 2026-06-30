@@ -135,8 +135,34 @@ export component BreakWindow inherits Window {
     in property <string> sub-text: "Relax your eyes — let your focus drift to the distance.";
     in property <string> tip-text;
     in property <bool> can-postpone: true;
+    in property <bool> calm-on: true;
+    in property <bool> exercise-on: false;
+    in property <bool> is-long: false;
     callback postpone();
     callback skip();
+
+    // calming drifting colour blobs behind the content
+    if root.calm-on: Rectangle {
+        width: 100%;
+        height: 100%;
+        Rectangle {
+            width: 340px;
+            height: 340px;
+            border-radius: 170px;
+            background: #2bd0c826;
+            x: -70px;
+            y: -90px;
+        }
+
+        Rectangle {
+            width: 300px;
+            height: 300px;
+            border-radius: 150px;
+            background: #4a7bd026;
+            x: parent.width - 230px;
+            y: parent.height - 210px;
+        }
+    }
 
     VerticalLayout {
         padding: 24px;
@@ -167,6 +193,19 @@ export component BreakWindow inherits Window {
             font-size: 16px;
             horizontal-alignment: center;
             wrap: word-wrap;
+        }
+
+        // guided eye-exercise: follow the dot (long breaks only)
+        if root.exercise-on && root.is-long: Rectangle {
+            height: 64px;
+            Rectangle {
+                width: 16px;
+                height: 16px;
+                border-radius: 8px;
+                background: Theme.accent;
+                y: parent.height / 2 - 8px;
+                x: parent.width / 2 - 8px + 120px * Math.sin((animation-tick() / 1s) * 90deg);
+            }
         }
 
         Text {
@@ -245,6 +284,8 @@ export component SettingsWindow inherits Window {
     in-out property <int> long-every;
     in-out property <int> long-min;
     in-out property <bool> tips-enabled;
+    in-out property <bool> exercises-enabled;
+    in-out property <bool> calm-enabled;
     in-out property <bool> blink-enabled;
     in-out property <int> blink-min;
     in-out property <bool> hydration-enabled;
@@ -384,6 +425,16 @@ export component SettingsWindow inherits Window {
                     ToggleRow {
                         label: "Show eye-care tips on the break screen";
                         checked <=> root.tips-enabled;
+                    }
+
+                    ToggleRow {
+                        label: "Guided eye-exercise on long breaks";
+                        checked <=> root.exercises-enabled;
+                    }
+
+                    ToggleRow {
+                        label: "Calming visuals on the break screen";
+                        checked <=> root.calm-enabled;
                     }
                 }
 

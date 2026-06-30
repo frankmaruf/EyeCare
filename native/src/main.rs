@@ -168,6 +168,8 @@ fn populate_settings(w: &SettingsWindow, s: &Settings) {
     w.set_long_every(s.long_break_every as i32);
     w.set_long_min((s.long_break_secs / 60) as i32);
     w.set_tips_enabled(s.tips_enabled);
+    w.set_exercises_enabled(s.exercises_enabled);
+    w.set_calm_enabled(s.calm_visuals_enabled);
     w.set_blink_enabled(s.blink_enabled);
     w.set_blink_min((s.blink_interval_secs / 60).max(1) as i32);
     w.set_hydration_enabled(s.hydration_enabled);
@@ -215,6 +217,8 @@ fn read_settings(w: &SettingsWindow, base: &Settings) -> Settings {
         long_break_every: w.get_long_every().max(1) as u32,
         long_break_secs: w.get_long_min().max(1) as u64 * 60,
         tips_enabled: w.get_tips_enabled(),
+        exercises_enabled: w.get_exercises_enabled(),
+        calm_visuals_enabled: w.get_calm_enabled(),
         blink_enabled: w.get_blink_enabled(),
         blink_interval_secs: w.get_blink_min().max(1) as u64 * 60,
         hydration_enabled: w.get_hydration_enabled(),
@@ -300,6 +304,11 @@ fn main() -> Result<(), slint::PlatformError> {
             }
             if let Some(w) = break_w.upgrade() {
                 w.set_time_text(time);
+                let bs = settings.borrow();
+                w.set_calm_on(bs.calm_visuals_enabled);
+                w.set_exercise_on(bs.exercises_enabled);
+                w.set_is_long(t.is_long);
+                drop(bs);
                 w.set_title_text(if t.is_long {
                     "Stand up & move".into()
                 } else {

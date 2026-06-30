@@ -20,6 +20,8 @@ pub struct Settings {
     pub long_break_every: u32,
     pub long_break_secs: u64,
     pub tips_enabled: bool,
+    pub exercises_enabled: bool,
+    pub calm_visuals_enabled: bool,
 
     // wellbeing nudges (notifications fired while working)
     pub blink_enabled: bool,
@@ -69,6 +71,8 @@ impl Default for Settings {
             long_break_every: 3,
             long_break_secs: 5 * 60,
             tips_enabled: true,
+            exercises_enabled: false,
+            calm_visuals_enabled: true,
             blink_enabled: true,
             blink_interval_secs: 2 * 60,
             hydration_enabled: false,
