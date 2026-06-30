@@ -6,6 +6,7 @@
 
 **A lightweight, cross-platform eye-health & break reminder.**
 Built with [Tauri v2](https://tauri.app) — a Rust core and a tiny web UI.
+A **native (Rust + Slint) low-RAM build** also ships in [`native/`](native/) — same features at **~44 MB RAM** instead of ~600 MB.
 
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 ![Platforms](https://img.shields.io/badge/platforms-Linux%20%C2%B7%20Windows%20%C2%B7%20macOS-2bd0c8)
@@ -80,6 +81,18 @@ Grab the `.msi` / `.exe` (Windows) or `.dmg` (macOS) from [Releases](https://git
 
 > Builds are produced on each target OS — Tauri does not cross-compile easily.
 
+### Native low-RAM build (Linux)
+For ~44 MB RAM instead of ~600 MB, grab the **native** binary from the latest
+[`native-v*` prerelease](https://github.com/frankmaruf/EyeCare/releases):
+```bash
+chmod +x eyecare-native-linux-x86_64
+./eyecare-native-linux-x86_64
+```
+Same 20-20-20 timer, floating widget, settings, eye-health nudges, tray, global
+shortcuts and in-app updater. Built with **Rust + [Slint](https://slint.dev)**
+(no webview). Forces an X11/XWayland session for reliable always-on-top,
+drag/resize and tray behaviour.
+
 ---
 
 ## 🛠 Build from source
@@ -99,6 +112,15 @@ npm run tauri dev        # run in development
 npm run tauri build      # build installers for the current OS
 ```
 Artifacts land in `src-tauri/target/release/bundle/` (`.deb`, AppImage, …).
+
+**Native (Rust + Slint) build** — no Node needed:
+```bash
+sudo apt install -y libfontconfig1-dev libxcb1-dev libxkbcommon-dev \
+  libwayland-dev libxkbcommon-x11-dev
+cd native
+cargo run --release          # or: cargo build --release
+```
+Binary: `native/target/release/eyecare-native`.
 
 ---
 
@@ -132,13 +154,25 @@ npm run tauri build -- --bundles appimage         # + nsis / dmg on their OSes
 ```
 Upload the bundle, its `.sig`, and `latest.json` to the GitHub release the updater endpoint points at (`plugins.updater` in `src-tauri/tauri.conf.json`). **Never commit the private key.**
 
+**Native build releases** are independent: push a `native-v*` tag and the
+[`native-release`](.github/workflows/native-release.yml) workflow builds the
+Linux binary and publishes it as a **prerelease** (so it never becomes the repo's
+"latest" or disturbs the Tauri `latest.json` updater). The native in-app updater
+scans `native-v*` tags for an `eyecare-native*` asset.
+```bash
+# bump native/Cargo.toml version to match, then:
+git tag native-v0.1.1 && git push origin native-v0.1.1
+```
+
 ---
 
 ## 🗺 Roadmap
 
 Done: MVP timer, widget, escalation/snooze, sound + break-end, global shortcuts, autostart, work-hours/weekdays, idle pause, micro/long breaks, blink/hydration/posture/eye-drops/evening nudges, tips, guided exercises, calming visuals, habit stats, themes, reduce-motion/high-contrast, DND + fullscreen suppression, import/export, updater plumbing.
 
-Later: multi-monitor forced overlay · "always below" widget · click-through/transparent widget · localization (i18n).
+**Native (Rust + Slint) low-RAM build** (`native/`): feature-complete on Linux at ~44 MB RAM — timer, widget, settings, all nudges, tray, global shortcuts, window layering, DND/fullscreen suppression, updater + CI. Later: multi-monitor overlay, true OS-DND read, AppImage/.deb packaging, Windows/macOS.
+
+Later (Tauri): multi-monitor forced overlay · "always below" widget · click-through/transparent widget · localization (i18n).
 
 Full spec & research: [`docs/requirements.md`](docs/requirements.md).
 
