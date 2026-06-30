@@ -1,6 +1,6 @@
 [package]
 name = "eyecare-native"
-version = "0.1.7"
+version = "0.1.8"
 edition = "2021"
 description = "EyeCare — native (Rust + Slint) re-implementation"
 
@@ -9,6 +9,7 @@ slint = { version = "1.8", default-features = false, features = [
     "compat-1-2",
     "backend-winit",
     "renderer-femtovg",
+    "renderer-software",
 ] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

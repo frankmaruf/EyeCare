@@ -181,6 +181,7 @@ fn populate_settings(w: &MainWindow, s: &Settings) {
     w.set_accent_idx(to_idx(&ACCENTS, &s.accent, 0));
     w.set_reduce_motion(s.reduce_motion);
     w.set_high_contrast(s.high_contrast);
+    w.set_low_ram(s.low_ram);
     w.set_autostart(s.autostart);
     w.set_idle_enabled(s.idle_pause_enabled);
     w.set_idle_sec(s.idle_threshold_secs as i32);
@@ -253,6 +254,7 @@ fn read_settings(w: &MainWindow, base: &Settings) -> Settings {
         accent: from_idx(&ACCENTS, w.get_accent_idx(), "#4cc6c0"),
         reduce_motion: w.get_reduce_motion(),
         high_contrast: w.get_high_contrast(),
+        low_ram: w.get_low_ram(),
         autostart: w.get_autostart(),
         idle_pause_enabled: w.get_idle_enabled(),
         idle_threshold_secs: w.get_idle_sec().max(10) as u64,
@@ -406,12 +408,23 @@ fn main() -> Result<(), slint::PlatformError> {
     #[cfg(target_os = "linux")]
     ensure_single_instance();
 
+    // Renderer choice (applied at launch): low-RAM mode uses the CPU software
+    // renderer (~20 MB, solid widget); otherwise femtovg GPU (~56 MB, transparent
+    // widget). Read it before the backend is built.
+    let low_ram = Settings::load().low_ram;
+    #[cfg(not(target_os = "linux"))]
+    std::env::set_var(
+        "SLINT_BACKEND",
+        if low_ram { "winit-software" } else { "winit-femtovg" },
+    );
+
     // Set a stable Wayland app_id / X11 WM_CLASS so the compositor can match the
     // installed .desktop and show the EyeCare icon (instead of a generic one).
     #[cfg(target_os = "linux")]
     {
         use i_slint_backend_winit::winit::platform::wayland::WindowAttributesExtWayland;
         if let Ok(backend) = i_slint_backend_winit::Backend::builder()
+            .with_renderer_name(if low_ram { "software" } else { "femtovg" }.to_string())
             .with_window_attributes_hook(|attrs| {
                 attrs.with_name("us.frankmaruf.eyecare-native", "EyeCare")
             })
@@ -432,6 +445,7 @@ fn main() -> Result<(), slint::PlatformError> {
     let main_win = MainWindow::new()?;
     let break_win = BreakWindow::new()?;
     let widget_win = WidgetWindow::new()?;
+    widget_win.set_opaque_bg(low_ram); // solid widget when on the software renderer
 
     // Closing the dashboard hides it (so the tray "Open" can re-show it) instead
     // of destroying the surface — re-showing a destroyed Wayland window fails.

@@ -51,6 +51,9 @@ pub struct Settings {
     pub accent: String, // hex "#rrggbb"
     pub reduce_motion: bool,
     pub high_contrast: bool,
+    /// Software renderer (no GPU) → ~20 MB instead of ~56 MB, but the widget is
+    /// solid (no transparency). Applied at next launch.
+    pub low_ram: bool,
 
     // window & overlay (§4.5 / §4.6)
     pub window_layer: String,      // "above" | "normal" | "below"
@@ -116,6 +119,7 @@ impl Default for Settings {
             accent: "#4cc6c0".into(),
             reduce_motion: false,
             high_contrast: false,
+            low_ram: false,
             window_layer: "normal".into(),
             allow_forced: true,
             overlay_scope: "active".into(),

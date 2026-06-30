@@ -34,6 +34,7 @@ export component MainWindow inherits Window {
     in-out property <int> accent-idx;
     in-out property <bool> reduce-motion;
     in-out property <bool> high-contrast;
+    in-out property <bool> low-ram;
     in-out property <bool> autostart;
     in-out property <bool> idle-enabled;
     in-out property <int> idle-sec;
@@ -799,6 +800,18 @@ export component MainWindow inherits Window {
                         label: "High contrast";
                         checked <=> root.high-contrast;
                     }
+
+                    ToggleRow {
+                        label: "Low-RAM mode (solid widget, ~20 MB)";
+                        checked <=> root.low-ram;
+                    }
+
+                    Text {
+                        text: "Software renderer — saves memory, makes the widget solid (no transparency). Applies after you restart EyeCare.";
+                        color: Theme.muted;
+                        font-size: 11px;
+                        wrap: word-wrap;
+                    }
                 }
 
                 Card {
@@ -1074,9 +1087,12 @@ export component WidgetWindow inherits Window {
     max-height: 480px;
     preferred-width: 132px;
     preferred-height: 132px;
-    background: transparent;
+    // opaque in low-RAM (software renderer can't do a transparent window —
+    // transparency would show black corners); transparent for the femtovg look.
+    background: root.opaque-bg ? Theme.bg : transparent;
     no-frame: true;
 
+    in property <bool> opaque-bg: false;
     in property <float> progress: 1.0;
     in property <string> time-text: "20:00";
     in property <string> pause-icon: "⏸";
