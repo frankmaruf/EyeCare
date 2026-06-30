@@ -95,27 +95,69 @@ pub fn x11_skip_taskbar(xid: u32) {
 #[cfg(not(target_os = "linux"))]
 pub fn x11_skip_taskbar(_xid: u32) {}
 
-/// Is this X11 window minimized (iconified)? Reads the authoritative
-/// `_NET_WM_STATE_HIDDEN` (winit's is_minimized() is unreliable on KWin).
+/// Re-assert skip-taskbar/pager on an already-mapped window via the live
+/// ClientMessage (idempotent — KWin ignores it if already set). Used to re-add
+/// skip-taskbar whenever KWin drops it while mapping the dashboard.
 #[cfg(target_os = "linux")]
-pub fn x11_is_minimized(xid: u32) -> bool {
-    use x11rb::protocol::xproto::{AtomEnum, ConnectionExt};
-    (|| -> Option<bool> {
-        let (conn, _) = x11rb::connect(None).ok()?;
+pub fn x11_skip_taskbar_msg(xid: u32) {
+    use x11rb::connection::Connection;
+    use x11rb::protocol::xproto::{
+        ClientMessageEvent, ConnectionExt, EventMask, CLIENT_MESSAGE_EVENT,
+    };
+    let _ = (|| -> Option<()> {
+        let (conn, screen) = x11rb::connect(None).ok()?;
+        let root = conn.setup().roots[screen].root;
         let wm_state = conn.intern_atom(false, b"_NET_WM_STATE").ok()?.reply().ok()?.atom;
-        let hidden = conn
-            .intern_atom(false, b"_NET_WM_STATE_HIDDEN").ok()?.reply().ok()?.atom;
-        let st = conn
-            .get_property(false, xid, wm_state, AtomEnum::ATOM, 0, 64).ok()?
-            .reply().ok()?;
-        Some(st.value32().map(|mut it| it.any(|a| a == hidden)).unwrap_or(false))
-    })()
-    .unwrap_or(false)
+        let skip_tb = conn
+            .intern_atom(false, b"_NET_WM_STATE_SKIP_TASKBAR").ok()?.reply().ok()?.atom;
+        let skip_pg = conn
+            .intern_atom(false, b"_NET_WM_STATE_SKIP_PAGER").ok()?.reply().ok()?.atom;
+        for atom in [skip_tb, skip_pg] {
+            let ev = ClientMessageEvent {
+                response_type: CLIENT_MESSAGE_EVENT,
+                format: 32,
+                sequence: 0,
+                window: xid,
+                type_: wm_state,
+                data: [1, atom, 0, 1, 0].into(),
+            };
+            conn.send_event(
+                false,
+                root,
+                EventMask::SUBSTRUCTURE_NOTIFY | EventMask::SUBSTRUCTURE_REDIRECT,
+                ev,
+            )
+            .ok()?;
+        }
+        conn.flush().ok()?;
+        Some(())
+    })();
 }
 
 #[cfg(not(target_os = "linux"))]
-pub fn x11_is_minimized(_xid: u32) -> bool {
-    false
+pub fn x11_skip_taskbar_msg(_xid: u32) {}
+
+/// One read of a window's `_NET_WM_STATE` → (is it minimized, has skip-taskbar),
+/// so the watcher can both catch minimize (HIDDEN) and re-add skip-taskbar in a
+/// single X round-trip. None if the state couldn't be read.
+#[cfg(target_os = "linux")]
+pub fn x11_window_flags(xid: u32) -> Option<(bool, bool)> {
+    use x11rb::protocol::xproto::{AtomEnum, ConnectionExt};
+    let (conn, _) = x11rb::connect(None).ok()?;
+    let wm_state = conn.intern_atom(false, b"_NET_WM_STATE").ok()?.reply().ok()?.atom;
+    let hidden = conn.intern_atom(false, b"_NET_WM_STATE_HIDDEN").ok()?.reply().ok()?.atom;
+    let skip = conn
+        .intern_atom(false, b"_NET_WM_STATE_SKIP_TASKBAR").ok()?.reply().ok()?.atom;
+    let st = conn
+        .get_property(false, xid, wm_state, AtomEnum::ATOM, 0, 64).ok()?
+        .reply().ok()?;
+    let atoms: Vec<u32> = st.value32().map(|it| it.collect()).unwrap_or_default();
+    Some((atoms.contains(&hidden), atoms.contains(&skip)))
+}
+
+#[cfg(not(target_os = "linux"))]
+pub fn x11_window_flags(_xid: u32) -> Option<(bool, bool)> {
+    None
 }
 
 

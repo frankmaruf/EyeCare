@@ -379,7 +379,9 @@ fn main() -> Result<(), slint::PlatformError> {
     // widget drag/resize, tray "Open", and keep-above. X11 restores all of it
     // (spec §7.8). The Tauri build did the same via GDK_BACKEND=x11.
     #[cfg(target_os = "linux")]
-    if std::env::var_os("WAYLAND_DISPLAY").is_some() {
+    if std::env::var_os("EYECARE_NO_X11").is_none()
+        && std::env::var_os("WAYLAND_DISPLAY").is_some()
+    {
         std::env::set_var("WINIT_UNIX_BACKEND", "x11");
         std::env::remove_var("WAYLAND_DISPLAY");
     }
@@ -1185,25 +1187,32 @@ fn main() -> Result<(), slint::PlatformError> {
             Duration::from_millis(150),
             move || {
                 warmup = warmup.saturating_add(1);
-                // Minimize → hide to the tray (not the taskbar). KWin's minimize
-                // sets _NET_WM_STATE_HIDDEN and drops skip-taskbar, so the only
-                // robust route is to catch the rising edge of HIDDEN and hide the
-                // window. The dashboard starts hidden (tray-first), so there's no
-                // startup race; the warm-up guards an initial transient anyway.
+                // While the dashboard is shown, one X read per ~450ms keeps it a
+                // tray-only window: (a) minimize sets _NET_WM_STATE_HIDDEN → hide
+                // it to the tray on the rising edge; (b) KWin keeps dropping
+                // skip-taskbar while mapping → re-add it whenever it's missing so
+                // the dashboard never lingers in the taskbar (incl. on reopen).
                 #[cfg(target_os = "linux")]
-                if warmup > 20 {
+                if warmup > 20 && warmup % 3 == 0 {
                     if let Some(m) = main_w.upgrade() {
-                        let hidden = m.window().is_visible()
-                            && m.window()
-                                .with_winit_window(|w| x11_window_id(w))
-                                .flatten()
-                                .map(platform::x11_is_minimized)
-                                .unwrap_or(false);
-                        if hidden && !prev_min {
-                            m.window().with_winit_window(|w| w.set_minimized(false));
-                            let _ = m.hide();
+                        if m.window().is_visible() {
+                            if let Some(xid) =
+                                m.window().with_winit_window(|w| x11_window_id(w)).flatten()
+                            {
+                                if let Some((hidden, has_skip)) = platform::x11_window_flags(xid) {
+                                    if hidden && !prev_min {
+                                        m.window()
+                                            .with_winit_window(|w| w.set_minimized(false));
+                                        let _ = m.hide();
+                                    } else if !hidden && !has_skip {
+                                        platform::x11_skip_taskbar_msg(xid);
+                                    }
+                                    prev_min = hidden;
+                                }
+                            }
+                        } else {
+                            prev_min = false;
                         }
-                        prev_min = hidden;
                     }
                 }
                 // live countdown in the tray tooltip (§4.11)
