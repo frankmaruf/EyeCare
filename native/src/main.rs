@@ -1178,10 +1178,34 @@ fn main() -> Result<(), slint::PlatformError> {
         let widget_visible = Rc::new(Cell::new(true));
         let tip_handle = handle.clone();
         let last_tip = Rc::new(RefCell::new(String::new()));
+        let mut warmup = 0u32;
+        let mut prev_min = false;
         dispatch.start(
             slint::TimerMode::Repeated,
             Duration::from_millis(150),
             move || {
+                warmup = warmup.saturating_add(1);
+                // Minimize → hide to the tray (not the taskbar). KWin's minimize
+                // sets _NET_WM_STATE_HIDDEN and drops skip-taskbar, so the only
+                // robust route is to catch the rising edge of HIDDEN and hide the
+                // window. The dashboard starts hidden (tray-first), so there's no
+                // startup race; the warm-up guards an initial transient anyway.
+                #[cfg(target_os = "linux")]
+                if warmup > 20 {
+                    if let Some(m) = main_w.upgrade() {
+                        let hidden = m.window().is_visible()
+                            && m.window()
+                                .with_winit_window(|w| x11_window_id(w))
+                                .flatten()
+                                .map(platform::x11_is_minimized)
+                                .unwrap_or(false);
+                        if hidden && !prev_min {
+                            m.window().with_winit_window(|w| w.set_minimized(false));
+                            let _ = m.hide();
+                        }
+                        prev_min = hidden;
+                    }
+                }
                 // live countdown in the tray tooltip (§4.11)
                 {
                     let t = timer.borrow();

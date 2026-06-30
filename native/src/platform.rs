@@ -51,7 +51,7 @@ pub fn x11_skip_taskbar(xid: u32) {
         AtomEnum, ClientMessageEvent, ConnectionExt, EventMask, PropMode, CLIENT_MESSAGE_EVENT,
     };
     use x11rb::wrapper::ConnectionExt as _; // change_property32
-    let _ = (|| -> Option<()> {
+    let ok = (|| -> Option<()> {
         let (conn, screen) = x11rb::connect(None).ok()?;
         let root = conn.setup().roots[screen].root;
         let wm_state = conn.intern_atom(false, b"_NET_WM_STATE").ok()?.reply().ok()?.atom;
@@ -89,10 +89,34 @@ pub fn x11_skip_taskbar(xid: u32) {
         conn.flush().ok()?;
         Some(())
     })();
+    let _ = ok;
 }
 
 #[cfg(not(target_os = "linux"))]
 pub fn x11_skip_taskbar(_xid: u32) {}
+
+/// Is this X11 window minimized (iconified)? Reads the authoritative
+/// `_NET_WM_STATE_HIDDEN` (winit's is_minimized() is unreliable on KWin).
+#[cfg(target_os = "linux")]
+pub fn x11_is_minimized(xid: u32) -> bool {
+    use x11rb::protocol::xproto::{AtomEnum, ConnectionExt};
+    (|| -> Option<bool> {
+        let (conn, _) = x11rb::connect(None).ok()?;
+        let wm_state = conn.intern_atom(false, b"_NET_WM_STATE").ok()?.reply().ok()?.atom;
+        let hidden = conn
+            .intern_atom(false, b"_NET_WM_STATE_HIDDEN").ok()?.reply().ok()?.atom;
+        let st = conn
+            .get_property(false, xid, wm_state, AtomEnum::ATOM, 0, 64).ok()?
+            .reply().ok()?;
+        Some(st.value32().map(|mut it| it.any(|a| a == hidden)).unwrap_or(false))
+    })()
+    .unwrap_or(false)
+}
+
+#[cfg(not(target_os = "linux"))]
+pub fn x11_is_minimized(_xid: u32) -> bool {
+    false
+}
 
 
 /// Play a short completion chime at the given volume (0–100). Best-effort via a
