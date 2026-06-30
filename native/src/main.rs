@@ -1061,8 +1061,19 @@ fn main() -> Result<(), slint::PlatformError> {
             std::thread::spawn(move || match updater::install(&url) {
                 Ok(exe) => {
                     let _ = tx.send(("Installed — restarting…".into(), None, false));
-                    std::thread::sleep(std::time::Duration::from_millis(400));
-                    let _ = std::process::Command::new(exe).spawn();
+                    std::thread::sleep(std::time::Duration::from_millis(300));
+                    // Relaunch with --show so the dashboard comes back up, and
+                    // delay the launch so this (old) process — and its
+                    // single-instance lock — is gone before the new one checks it.
+                    #[cfg(target_os = "linux")]
+                    {
+                        let cmd = format!("sleep 1; exec \"{}\" --show", exe.to_string_lossy());
+                        let _ = std::process::Command::new("sh").arg("-c").arg(cmd).spawn();
+                    }
+                    #[cfg(not(target_os = "linux"))]
+                    {
+                        let _ = std::process::Command::new(&exe).arg("--show").spawn();
+                    }
                     std::process::exit(0);
                 }
                 Err(e) => {
