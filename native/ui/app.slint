@@ -1,5 +1,5 @@
 import { Theme, Ring, PillButton, Card, NumberField, ToggleRow, IconButton } from "theme.slint";
-import { ScrollView } from "std-widgets.slint";
+import { ScrollView, ComboBox } from "std-widgets.slint";
 
 // Dashboard — mirrors showDashboard() in eyecare/src/main.ts.
 export component MainWindow inherits Window {
@@ -229,6 +229,10 @@ export component SettingsWindow inherits Window {
     in-out property <int> posture-min;
     in-out property <bool> eyedrops-enabled;
     in-out property <int> eyedrops-min;
+    in-out property <string> widget-shape;
+    in-out property <int> widget-opacity;
+    in-out property <int> widget-w;
+    in-out property <int> widget-h;
     in property <string> long-hint;
     callback save();
     callback back();
@@ -390,6 +394,51 @@ export component SettingsWindow inherits Window {
                         maximum: 480;
                     }
                 }
+
+                Card {
+                    title: "Floating widget";
+                    HorizontalLayout {
+                        height: 32px;
+                        spacing: 8px;
+                        Text {
+                            text: "Shape";
+                            color: Theme.text;
+                            font-size: 14px;
+                            vertical-alignment: center;
+                            horizontal-stretch: 1;
+                        }
+
+                        ComboBox {
+                            model: ["round", "squircle", "square"];
+                            current-value <=> root.widget-shape;
+                            width: 130px;
+                        }
+                    }
+
+                    NumberField {
+                        label: "Opacity";
+                        unit: "%";
+                        value <=> root.widget-opacity;
+                        minimum: 20;
+                        maximum: 100;
+                    }
+
+                    NumberField {
+                        label: "Width";
+                        unit: "px";
+                        value <=> root.widget-w;
+                        minimum: 120;
+                        maximum: 480;
+                    }
+
+                    NumberField {
+                        label: "Height";
+                        unit: "px";
+                        value <=> root.widget-h;
+                        minimum: 120;
+                        maximum: 480;
+                    }
+                }
             }
         }
 
@@ -426,6 +475,8 @@ export component WidgetWindow inherits Window {
     in property <float> progress: 1.0;
     in property <string> time-text: "20:00";
     in property <string> pause-icon: "⏸";
+    in property <string> shape: "squircle";
+    in property <float> opacity-frac: 0.95;
     callback restore();
     callback pause();
     callback take-break();
@@ -436,8 +487,10 @@ export component WidgetWindow inherits Window {
     card := Rectangle {
         width: 100%;
         height: 100%;
-        border-radius: 28px;
-        background: #0e1726f2;
+        border-radius: root.shape == "round"
+            ? self.width / 2
+            : (root.shape == "square" ? 10px : 28px);
+        background: rgba(14, 23, 38, root.opacity-frac);
         border-width: 1px;
         border-color: #2b3a57;
 

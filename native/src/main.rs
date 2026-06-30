@@ -75,6 +75,10 @@ fn populate_settings(w: &SettingsWindow, s: &Settings) {
     w.set_posture_min((s.posture_interval_secs / 60).max(1) as i32);
     w.set_eyedrops_enabled(s.eyedrops_enabled);
     w.set_eyedrops_min((s.eyedrops_interval_secs / 60).max(1) as i32);
+    w.set_widget_shape(s.widget_shape.clone().into());
+    w.set_widget_opacity(s.widget_opacity as i32);
+    w.set_widget_w(s.widget_width as i32);
+    w.set_widget_h(s.widget_height as i32);
     w.set_long_hint(long_hint(s).into());
 }
 
@@ -97,7 +101,11 @@ fn read_settings(w: &SettingsWindow, base: &Settings) -> Settings {
         posture_interval_secs: w.get_posture_min().max(5) as u64 * 60,
         eyedrops_enabled: w.get_eyedrops_enabled(),
         eyedrops_interval_secs: w.get_eyedrops_min().max(5) as u64 * 60,
-        // preserve fields not shown in the settings UI (widget geometry, …)
+        widget_shape: w.get_widget_shape().to_string(),
+        widget_opacity: w.get_widget_opacity().clamp(20, 100) as u32,
+        widget_width: w.get_widget_w().clamp(120, 480) as u32,
+        widget_height: w.get_widget_h().clamp(120, 480) as u32,
+        // preserve fields not shown in the settings UI (widget position, …)
         ..base.clone()
     }
 }
@@ -117,6 +125,7 @@ fn main() -> Result<(), slint::PlatformError> {
         let break_w = break_win.as_weak();
         let widget_w = widget_win.as_weak();
         let timer = timer.clone();
+        let settings = settings.clone();
         move || {
             let t = timer.borrow();
             let time = fmt(t.remaining);
@@ -136,6 +145,9 @@ fn main() -> Result<(), slint::PlatformError> {
                 w.set_progress(t.fraction());
                 w.set_time_text(time.clone());
                 w.set_pause_icon(if t.paused { "▶".into() } else { "⏸".into() });
+                let s = settings.borrow();
+                w.set_shape(s.widget_shape.clone().into());
+                w.set_opacity_frac((s.widget_opacity as f32 / 100.0).clamp(0.2, 1.0));
             }
             if let Some(w) = break_w.upgrade() {
                 w.set_time_text(time);
@@ -258,6 +270,7 @@ fn main() -> Result<(), slint::PlatformError> {
     }
     {
         let settings_w = settings_win.as_weak();
+        let widget_w = widget_win.as_weak();
         let settings = settings.clone();
         let timer = timer.clone();
         let render = render.clone();
@@ -267,6 +280,12 @@ fn main() -> Result<(), slint::PlatformError> {
             timer.borrow_mut().apply_settings(&next);
             next.save();
             *settings.borrow_mut() = next;
+            // push the new widget size to the live widget window
+            if let Some(wd) = widget_w.upgrade() {
+                let s = settings.borrow();
+                wd.window()
+                    .set_size(slint::LogicalSize::new(s.widget_width as f32, s.widget_height as f32));
+            }
             w.set_long_hint(long_hint(&settings.borrow()).into());
             let _ = w.hide();
             render();
@@ -303,6 +322,8 @@ fn main() -> Result<(), slint::PlatformError> {
         }
         widget_win.window().with_winit_window(|win| {
             use i_slint_backend_winit::winit::dpi::LogicalSize;
+            use i_slint_backend_winit::winit::window::WindowLevel;
+            win.set_window_level(WindowLevel::AlwaysOnTop);
             win.set_min_inner_size(Some(LogicalSize::new(
                 settings::WIDGET_MIN as f64,
                 settings::WIDGET_MIN as f64,

@@ -29,7 +29,9 @@ pub struct Settings {
     pub eyedrops_enabled: bool,
     pub eyedrops_interval_secs: u64,
 
-    // floating widget geometry (persisted across runs)
+    // floating widget
+    pub widget_shape: String, // "round" | "squircle" | "square"
+    pub widget_opacity: u32,   // 0–100
     pub widget_width: u32,
     pub widget_height: u32,
     pub widget_x: Option<i32>,
@@ -56,6 +58,8 @@ impl Default for Settings {
             posture_interval_secs: 30 * 60,
             eyedrops_enabled: false,
             eyedrops_interval_secs: 2 * 60 * 60,
+            widget_shape: "squircle".into(),
+            widget_opacity: 95,
             widget_width: 132,
             widget_height: 132,
             widget_x: None,
