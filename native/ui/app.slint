@@ -844,8 +844,14 @@ export component BreakWindow inherits Window {
 export component WidgetWindow inherits Window {
     title: "EyeCare widget";
     icon: @image-url("icon.png");
-    width: 132px;
-    height: 132px;
+    // resizable range (not a fixed width/height — that would lock WM_NORMAL_HINTS
+    // so the window manager refuses to resize it)
+    min-width: 120px;
+    min-height: 120px;
+    max-width: 480px;
+    max-height: 480px;
+    preferred-width: 132px;
+    preferred-height: 132px;
     background: transparent;
     no-frame: true;
 
