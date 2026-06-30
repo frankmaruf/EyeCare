@@ -52,6 +52,20 @@ pub struct Settings {
     pub reduce_motion: bool,
     pub high_contrast: bool,
 
+    // window & overlay (§4.5 / §4.6)
+    pub window_layer: String,      // "above" | "normal" | "below"
+    pub allow_forced: bool,        // §4.3 — master switch for the forced overlay
+    pub overlay_scope: String,     // "active" | "all" monitors
+    pub require_full_break: bool,  // §4.6 — can't dismiss until break done
+    pub show_skip_button: bool,    // §4.4
+    pub show_postpone_button: bool,
+    pub break_end_signal: String,  // "off" | "notification" | "chime" | "both" (§4.7)
+    pub sound_volume: u32,         // 0–100 (§4.6)
+    pub respect_dnd: bool,         // §5 / §9.9
+    pub suppress_presentation: bool, // §9.9 — hush during fullscreen/screen-share
+    pub shortcuts_enabled: bool,   // §4.8 — global hotkeys
+    pub darkroom_enabled: bool,    // §9.5
+
     // floating widget
     pub widget_shape: String, // "round" | "squircle" | "square"
     pub widget_opacity: u32,   // 0–100
@@ -59,6 +73,10 @@ pub struct Settings {
     pub widget_height: u32,
     pub widget_x: Option<i32>,
     pub widget_y: Option<i32>,
+    pub widget_mode: String,       // "off" | "minimized" | "always" (§4.12)
+    pub widget_layer: String,      // "above" | "normal" | "below"
+    pub widget_bg: String,         // "solid" | "translucent" | "transparent"
+    pub widget_click_through: bool, // §4.12 passive mode
 }
 
 impl Default for Settings {
@@ -98,12 +116,28 @@ impl Default for Settings {
             accent: "#4cc6c0".into(),
             reduce_motion: false,
             high_contrast: false,
+            window_layer: "normal".into(),
+            allow_forced: true,
+            overlay_scope: "active".into(),
+            require_full_break: false,
+            show_skip_button: true,
+            show_postpone_button: true,
+            break_end_signal: "both".into(),
+            sound_volume: 70,
+            respect_dnd: true,
+            suppress_presentation: true,
+            shortcuts_enabled: true,
+            darkroom_enabled: false,
             widget_shape: "squircle".into(),
             widget_opacity: 95,
             widget_width: 132,
             widget_height: 132,
             widget_x: None,
             widget_y: None,
+            widget_mode: "always".into(),
+            widget_layer: "above".into(),
+            widget_bg: "translucent".into(),
+            widget_click_through: false,
         }
     }
 }

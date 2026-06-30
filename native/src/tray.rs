@@ -8,6 +8,7 @@ use std::sync::mpsc::Sender;
 #[derive(Clone, Copy)]
 pub enum Action {
     Open,
+    Settings,
     Pause,
     Take,
     Skip,
@@ -17,6 +18,8 @@ pub enum Action {
 
 pub struct EyeTray {
     tx: Sender<Action>,
+    /// live countdown shown in the tray tooltip (§4.11)
+    pub status: String,
 }
 
 impl EyeTray {
@@ -34,6 +37,15 @@ impl ksni::Tray for EyeTray {
         "EyeCare".into()
     }
 
+    fn tool_tip(&self) -> ksni::ToolTip {
+        ksni::ToolTip {
+            title: "EyeCare".into(),
+            description: self.status.clone(),
+            icon_name: String::new(),
+            icon_pixmap: Vec::new(),
+        }
+    }
+
     fn icon_pixmap(&self) -> Vec<ksni::Icon> {
         icon_pixmap()
     }
@@ -48,6 +60,12 @@ impl ksni::Tray for EyeTray {
             StandardItem {
                 label: "Open EyeCare".into(),
                 activate: Box::new(|t: &mut EyeTray| t.send(Action::Open)),
+                ..Default::default()
+            }
+            .into(),
+            StandardItem {
+                label: "Open settings".into(),
+                activate: Box::new(|t: &mut EyeTray| t.send(Action::Settings)),
                 ..Default::default()
             }
             .into(),
@@ -115,7 +133,10 @@ fn icon_pixmap() -> Vec<ksni::Icon> {
 /// Start the tray on its own thread. Returns a handle that must be kept alive
 /// for the tray to stay registered.
 pub fn spawn(tx: Sender<Action>) -> ksni::Handle<EyeTray> {
-    let service = ksni::TrayService::new(EyeTray { tx });
+    let service = ksni::TrayService::new(EyeTray {
+        tx,
+        status: String::new(),
+    });
     let handle = service.handle();
     service.spawn();
     handle

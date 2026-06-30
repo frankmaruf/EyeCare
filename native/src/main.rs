@@ -4,6 +4,7 @@
 // autostart, updater and packaging land in later increments. Mirrors the design
 // of the Tauri build (eyecare/src).
 
+mod platform;
 mod settings;
 mod stats;
 mod timer;
@@ -120,6 +121,11 @@ fn long_hint(s: &Settings) -> String {
 const SHAPES: [&str; 3] = ["round", "squircle", "square"];
 const ESCALATIONS: [&str; 3] = ["gentle", "standard", "forced"];
 const ACCENTS: [&str; 6] = ["#4cc6c0", "#34d399", "#5b8def", "#e2725b", "#a78bfa", "#f59e0b"];
+const LAYERS: [&str; 3] = ["above", "normal", "below"];
+const WIDGET_MODES: [&str; 3] = ["off", "minimized", "always"];
+const WIDGET_BGS: [&str; 3] = ["solid", "translucent", "transparent"];
+const BREAK_END_SIGNALS: [&str; 4] = ["off", "notification", "chime", "both"];
+const OVERLAY_SCOPES: [&str; 2] = ["active", "all"];
 
 /// Index of `val` in `list`, defaulting to `default`. Keeps the combo/swatch
 /// <-> string mapping in one place.
@@ -216,6 +222,24 @@ fn populate_settings(w: &MainWindow, s: &Settings) {
     w.set_widget_opacity(s.widget_opacity as i32);
     w.set_widget_w(s.widget_width as i32);
     w.set_widget_h(s.widget_height as i32);
+    // window & overlay
+    w.set_window_layer_idx(to_idx(&LAYERS, &s.window_layer, 1));
+    w.set_allow_forced(s.allow_forced);
+    w.set_overlay_scope_idx(to_idx(&OVERLAY_SCOPES, &s.overlay_scope, 0));
+    w.set_require_full_break(s.require_full_break);
+    w.set_show_skip_button(s.show_skip_button);
+    w.set_show_postpone_button(s.show_postpone_button);
+    w.set_break_end_idx(to_idx(&BREAK_END_SIGNALS, &s.break_end_signal, 3));
+    w.set_sound_volume(s.sound_volume as i32);
+    w.set_respect_dnd(s.respect_dnd);
+    w.set_suppress_presentation(s.suppress_presentation);
+    w.set_shortcuts_enabled(s.shortcuts_enabled);
+    w.set_darkroom_enabled(s.darkroom_enabled);
+    // widget extras
+    w.set_widget_mode_idx(to_idx(&WIDGET_MODES, &s.widget_mode, 2));
+    w.set_widget_layer_idx(to_idx(&LAYERS, &s.widget_layer, 0));
+    w.set_widget_bg_idx(to_idx(&WIDGET_BGS, &s.widget_bg, 1));
+    w.set_widget_click_through(s.widget_click_through);
     w.set_long_hint(long_hint(s).into());
 }
 
@@ -265,8 +289,24 @@ fn read_settings(w: &MainWindow, base: &Settings) -> Settings {
         eyedrops_interval_secs: w.get_eyedrops_min().max(5) as u64 * 60,
         widget_shape: idx_to_shape(w.get_widget_shape_idx()),
         widget_opacity: w.get_widget_opacity().clamp(20, 100) as u32,
-        widget_width: w.get_widget_w().clamp(120, 480) as u32,
-        widget_height: w.get_widget_h().clamp(120, 480) as u32,
+        widget_width: w.get_widget_w().clamp(settings::WIDGET_MIN as i32, settings::WIDGET_MAX as i32) as u32,
+        widget_height: w.get_widget_h().clamp(settings::WIDGET_MIN as i32, settings::WIDGET_MAX as i32) as u32,
+        window_layer: from_idx(&LAYERS, w.get_window_layer_idx(), "normal"),
+        allow_forced: w.get_allow_forced(),
+        overlay_scope: from_idx(&OVERLAY_SCOPES, w.get_overlay_scope_idx(), "active"),
+        require_full_break: w.get_require_full_break(),
+        show_skip_button: w.get_show_skip_button(),
+        show_postpone_button: w.get_show_postpone_button(),
+        break_end_signal: from_idx(&BREAK_END_SIGNALS, w.get_break_end_idx(), "both"),
+        sound_volume: w.get_sound_volume().clamp(0, 100) as u32,
+        respect_dnd: w.get_respect_dnd(),
+        suppress_presentation: w.get_suppress_presentation(),
+        shortcuts_enabled: w.get_shortcuts_enabled(),
+        darkroom_enabled: w.get_darkroom_enabled(),
+        widget_mode: from_idx(&WIDGET_MODES, w.get_widget_mode_idx(), "always"),
+        widget_layer: from_idx(&LAYERS, w.get_widget_layer_idx(), "above"),
+        widget_bg: from_idx(&WIDGET_BGS, w.get_widget_bg_idx(), "translucent"),
+        widget_click_through: w.get_widget_click_through(),
         // preserve fields not shown in the settings UI (widget position, …)
         ..base.clone()
     }
@@ -326,6 +366,7 @@ fn main() -> Result<(), slint::PlatformError> {
     // 0 = running, 1 = idle-paused, 2 = outside work hours
     let gate = Rc::new(Cell::new(0u8));
     let evening_day = Rc::new(Cell::new(-1i64));
+    let darkroom_day = Rc::new(Cell::new(-1i64));
 
     let main_win = MainWindow::new()?;
     let break_win = BreakWindow::new()?;
@@ -336,6 +377,19 @@ fn main() -> Result<(), slint::PlatformError> {
     main_win
         .window()
         .on_close_requested(|| slint::CloseRequestResponse::HideWindow);
+
+    // require-full-break: refuse to close the break overlay until the timer ends
+    // (§4.6); otherwise just hide it.
+    {
+        let settings = settings.clone();
+        break_win.window().on_close_requested(move || {
+            if settings.borrow().require_full_break {
+                slint::CloseRequestResponse::KeepWindowShown
+            } else {
+                slint::CloseRequestResponse::HideWindow
+            }
+        });
+    }
 
     // Push appearance settings onto a window's Theme global (each top-level
     // window owns its own global instance, so we apply to all of them).
@@ -355,6 +409,33 @@ fn main() -> Result<(), slint::PlatformError> {
         set_theme!(widget_win, c, s.reduce_motion, s.high_contrast);
         apply_autostart(s.autostart);
     }
+
+    // Apply window stacking (above/normal/below) + widget click-through. Called
+    // at startup and after Save.
+    let apply_chrome: Rc<dyn Fn()> = Rc::new({
+        let main_w = main_win.as_weak();
+        let widget_w = widget_win.as_weak();
+        let settings = settings.clone();
+        move || {
+            use i_slint_backend_winit::winit::window::WindowLevel;
+            let level = |l: &str| match l {
+                "above" => WindowLevel::AlwaysOnTop,
+                "below" => WindowLevel::AlwaysOnBottom,
+                _ => WindowLevel::Normal,
+            };
+            let s = settings.borrow();
+            if let Some(m) = main_w.upgrade() {
+                m.window()
+                    .with_winit_window(|win| win.set_window_level(level(&s.window_layer)));
+            }
+            if let Some(wd) = widget_w.upgrade() {
+                wd.window().with_winit_window(|win| {
+                    win.set_window_level(level(&s.widget_layer));
+                    let _ = win.set_cursor_hittest(!s.widget_click_through);
+                });
+            }
+        }
+    });
 
     // Single source of truth → every window. One closure keeps them in sync.
     let render = {
@@ -389,7 +470,51 @@ fn main() -> Result<(), slint::PlatformError> {
                 w.set_pause_icon(if t.paused { "▶".into() } else { "⏸".into() });
                 let s = settings.borrow();
                 w.set_shape(s.widget_shape.clone().into());
-                w.set_opacity_frac((s.widget_opacity as f32 / 100.0).clamp(0.2, 1.0));
+                w.set_phase_state(if t.paused {
+                    2
+                } else if t.phase == Phase::Break {
+                    1
+                } else {
+                    0
+                });
+                // background mode → effective card opacity
+                let base = (s.widget_opacity as f32 / 100.0).clamp(0.0, 1.0);
+                w.set_opacity_frac(match s.widget_bg.as_str() {
+                    "solid" => 1.0,
+                    "transparent" => 0.0,
+                    _ => base.max(0.2),
+                });
+                // show/hide per mode (off / when-minimized / always), hidden during
+                // a forced overlay or a fullscreen presentation
+                let main_min = main_w
+                    .upgrade()
+                    .map(|m| {
+                        let vis = m.window().is_visible();
+                        let min = m
+                            .window()
+                            .with_winit_window(|win| win.is_minimized().unwrap_or(false))
+                            .unwrap_or(false);
+                        !vis || min
+                    })
+                    .unwrap_or(true);
+                let mut show = match s.widget_mode.as_str() {
+                    "off" => false,
+                    "minimized" => main_min,
+                    _ => true,
+                };
+                if t.phase == Phase::Break && s.escalation == "forced" {
+                    show = false;
+                }
+                if show && s.suppress_presentation && platform::another_app_fullscreen() {
+                    show = false;
+                }
+                if show != w.window().is_visible() {
+                    if show {
+                        let _ = w.show();
+                    } else {
+                        let _ = w.hide();
+                    }
+                }
             }
             if let Some(w) = break_w.upgrade() {
                 w.set_time_text(time);
@@ -397,6 +522,10 @@ fn main() -> Result<(), slint::PlatformError> {
                 w.set_calm_on(bs.calm_visuals_enabled);
                 w.set_exercise_on(bs.exercises_enabled);
                 w.set_is_long(t.is_long);
+                // require-full-break hides Skip + Postpone until the break is done
+                let req = bs.require_full_break;
+                w.set_show_skip(bs.show_skip_button && !req);
+                w.set_show_postpone(bs.show_postpone_button && !req);
                 drop(bs);
                 w.set_title_text(if t.is_long {
                     "Stand up & move".into()
@@ -421,16 +550,23 @@ fn main() -> Result<(), slint::PlatformError> {
             let Some(w) = break_w.upgrade() else { return };
             let t = timer.borrow();
             let s = settings.borrow();
+            // "forced" needs the allow-forced master switch; otherwise it falls
+            // back to a standard window (spec §4.3).
+            let forced = s.escalation == "forced" && s.allow_forced;
             // "gentle" intensity uses a notification only — no window grab.
             if t.phase == Phase::Break && s.escalation != "gentle" {
+                // hush a non-forced overlay during a fullscreen presentation /
+                // screen-share — the break-start notification already fired (§9.9).
+                if !forced && s.suppress_presentation && platform::another_app_fullscreen() {
+                    let _ = w.hide();
+                    return;
+                }
                 if s.tips_enabled {
                     w.set_tip_text(format!("💡 {}", TIPS[t.breaks_done as usize % TIPS.len()]).into());
                 } else {
                     w.set_tip_text("".into());
                 }
                 w.set_can_postpone(t.postpones_used < s.max_postpones);
-                // "forced" goes fullscreen + always-on-top; "standard" is a window.
-                let forced = s.escalation == "forced";
                 w.window().with_winit_window(|win| {
                     use i_slint_backend_winit::winit::window::{Fullscreen, WindowLevel};
                     win.set_fullscreen(if forced {
@@ -439,7 +575,6 @@ fn main() -> Result<(), slint::PlatformError> {
                         None
                     });
                     win.set_window_level(WindowLevel::AlwaysOnTop);
-                    let _ = forced;
                 });
                 let _ = w.show();
                 // bring the break overlay to the front + focus it
@@ -456,6 +591,7 @@ fn main() -> Result<(), slint::PlatformError> {
     render();
     let _ = break_win.hide();
     let _ = widget_win.show();
+    apply_chrome();
 
     // 1-second tick.
     let ticker = slint::Timer::default();
@@ -466,6 +602,7 @@ fn main() -> Result<(), slint::PlatformError> {
         let sync_break = sync_break.clone();
         let gate = gate.clone();
         let evening_day = evening_day.clone();
+        let darkroom_day = darkroom_day.clone();
         let stats = stats.clone();
         ticker.start(slint::TimerMode::Repeated, Duration::from_secs(1), move || {
             // Evening warm-screen nudge: once per day at the chosen hour.
@@ -480,6 +617,18 @@ fn main() -> Result<(), slint::PlatformError> {
                         notify(
                             "Evening eyes",
                             "Warm your screen (night mode) and avoid using it in the dark.",
+                        );
+                    }
+                    // dark-room warning: once per evening, an hour after the warm
+                    // nudge (§9.5)
+                    if s.darkroom_enabled
+                        && now.hour() == (s.evening_hour + 1) % 24
+                        && darkroom_day.get() != ord
+                    {
+                        darkroom_day.set(ord);
+                        notify(
+                            "Room too dark?",
+                            "Match screen brightness to the room — a bright screen in the dark strains the eyes.",
                         );
                     }
                 }
@@ -505,13 +654,27 @@ fn main() -> Result<(), slint::PlatformError> {
                 Event::Prewarn => notify("Eye break soon", "A break is coming up — finish your thought."),
                 Event::BreakStart => {
                     notify("Time for an eye break", "Look ~20 feet (6 m) away and relax your eyes.");
+                    let s = settings.borrow();
+                    if s.sound_enabled {
+                        platform::play_sound(s.sound_volume);
+                    }
+                    drop(s);
                     sync_break();
                 }
                 Event::BreakEnd => {
-                    if settings.borrow().stats_enabled {
+                    let s = settings.borrow();
+                    if s.stats_enabled {
                         stats.borrow_mut().record(true);
                     }
-                    notify("Break over", "Welcome back — your eyes thank you.");
+                    // break-over signal: off / notification / chime / both (§4.7)
+                    let sig = s.break_end_signal.clone();
+                    if sig == "notification" || sig == "both" {
+                        notify("Break over", "Welcome back — your eyes thank you.");
+                    }
+                    if sig == "chime" || sig == "both" {
+                        platform::play_sound(s.sound_volume);
+                    }
+                    drop(s);
                     sync_break();
                 }
                 Event::None => {}
@@ -582,6 +745,25 @@ fn main() -> Result<(), slint::PlatformError> {
     });
     action!(widget_win.on_take_break, |t, s| t.take_break(&s));
     action!(widget_win.on_skip, |t, s| t.skip(&s));
+    action!(widget_win.on_postpone, |t, s| t.postpone(&s));
+    widget_win.on_quit(|| {
+        let _ = slint::quit_event_loop();
+    });
+    {
+        let mw = main_win.as_weak();
+        let settings = settings.clone();
+        widget_win.on_open_settings(move || {
+            let Some(w) = mw.upgrade() else { return };
+            populate_settings(&w, &settings.borrow());
+            w.set_show_settings(true);
+            let _ = w.show();
+            w.window().with_winit_window(|win| {
+                win.set_minimized(false);
+                win.set_visible(true);
+                win.focus_window();
+            });
+        });
+    }
 
     // Settings page (rendered inside the dashboard window) — open / save / back
     // / export / import. Page-swap via `show-settings` (no separate window).
@@ -607,6 +789,7 @@ fn main() -> Result<(), slint::PlatformError> {
         let settings = settings.clone();
         let timer = timer.clone();
         let render = render.clone();
+        let apply_chrome = apply_chrome.clone();
         main_win.on_save(move || {
             let Some(w) = mw.upgrade() else { return };
             let next = read_settings(&w, &settings.borrow());
@@ -627,6 +810,7 @@ fn main() -> Result<(), slint::PlatformError> {
             apply_autostart(s.autostart);
             w.set_long_hint(long_hint(&s).into());
             drop(s);
+            apply_chrome();
             w.set_show_settings(false);
             render();
         });
@@ -639,6 +823,67 @@ fn main() -> Result<(), slint::PlatformError> {
             }
         });
     }
+
+    // ---- global keyboard shortcuts (§4.8): Ctrl+Alt+ P/B/K/O ----
+    let _hotkeys = {
+        use global_hotkey::hotkey::{Code, HotKey, Modifiers};
+        use global_hotkey::{GlobalHotKeyEvent, GlobalHotKeyManager, HotKeyState};
+        match GlobalHotKeyManager::new() {
+            Err(e) => {
+                eprintln!("[eyecare] global shortcuts unavailable: {e}");
+                None
+            }
+            Ok(mgr) => {
+                let m = Modifiers::CONTROL | Modifiers::ALT;
+                let hk_pause = HotKey::new(Some(m), Code::KeyP);
+                let hk_take = HotKey::new(Some(m), Code::KeyB);
+                let hk_skip = HotKey::new(Some(m), Code::KeyK);
+                let hk_post = HotKey::new(Some(m), Code::KeyO);
+                for hk in [hk_pause, hk_take, hk_skip, hk_post] {
+                    let _ = mgr.register(hk);
+                }
+                let (ip, it, ik, io) =
+                    (hk_pause.id(), hk_take.id(), hk_skip.id(), hk_post.id());
+                let rx = GlobalHotKeyEvent::receiver();
+                let poll = slint::Timer::default();
+                let timer = timer.clone();
+                let settings = settings.clone();
+                let render = render.clone();
+                let sync_break = sync_break.clone();
+                poll.start(slint::TimerMode::Repeated, Duration::from_millis(200), move || {
+                    let mut acted = false;
+                    while let Ok(ev) = rx.try_recv() {
+                        if ev.state != HotKeyState::Pressed {
+                            continue;
+                        }
+                        if !settings.borrow().shortcuts_enabled {
+                            continue;
+                        }
+                        {
+                            let mut t = timer.borrow_mut();
+                            let s = settings.borrow();
+                            if ev.id == ip {
+                                let p = !t.paused;
+                                t.set_paused(p);
+                            } else if ev.id == it {
+                                t.take_break(&s);
+                            } else if ev.id == ik {
+                                t.skip(&s);
+                            } else if ev.id == io {
+                                t.postpone(&s);
+                            }
+                        }
+                        acted = true;
+                    }
+                    if acted {
+                        sync_break();
+                        render();
+                    }
+                });
+                Some((mgr, poll))
+            }
+        }
+    };
     {
         let mw = main_win.as_weak();
         let settings = settings.clone();
@@ -867,21 +1112,53 @@ fn main() -> Result<(), slint::PlatformError> {
         let render = render.clone();
         let sync_break = sync_break.clone();
         let widget_visible = Rc::new(Cell::new(true));
+        let tip_handle = handle.clone();
+        let last_tip = Rc::new(RefCell::new(String::new()));
         dispatch.start(
             slint::TimerMode::Repeated,
             Duration::from_millis(150),
             move || {
+                // live countdown in the tray tooltip (§4.11)
+                {
+                    let t = timer.borrow();
+                    let state = if t.paused {
+                        "paused"
+                    } else if t.phase == Phase::Break {
+                        "break"
+                    } else {
+                        "until next break"
+                    };
+                    let txt = format!("{} — {}", fmt(t.remaining), state);
+                    drop(t);
+                    if *last_tip.borrow() != txt {
+                        *last_tip.borrow_mut() = txt.clone();
+                        tip_handle.update(move |tr| tr.status = txt.clone());
+                    }
+                }
                 while let Ok(action) = rx.try_recv() {
                     use tray::Action::*;
                     match action {
                         Open => {
                             if let Some(m) = main_w.upgrade() {
+                                m.set_show_settings(false);
                                 let _ = m.show();
                                 m.window().with_winit_window(|win| {
                                     win.set_minimized(false);
                                     win.set_visible(true);
                                     win.focus_window();
                                     win.request_redraw();
+                                });
+                            }
+                        }
+                        Settings => {
+                            if let Some(m) = main_w.upgrade() {
+                                populate_settings(&m, &settings.borrow());
+                                m.set_show_settings(true);
+                                let _ = m.show();
+                                m.window().with_winit_window(|win| {
+                                    win.set_minimized(false);
+                                    win.set_visible(true);
+                                    win.focus_window();
                                 });
                             }
                         }

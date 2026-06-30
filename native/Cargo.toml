@@ -20,11 +20,14 @@ ureq = { version = "2", features = ["tls", "json"] }
 notify-rust = "4"
 i-slint-backend-winit = "1.8"
 user-idle = "0.6"
+global-hotkey = "0.6"
 
 # Linux tray via StatusNotifierItem (D-Bus) — no gtk, keeps RAM low.
 [target.'cfg(target_os = "linux")'.dependencies]
 ksni = "0.2"
 png = "0.17"
+# read X11 window state for presentation/fullscreen suppression (§9.9)
+x11rb = "0.13"
 
 [build-dependencies]
 slint-build = "1.8"

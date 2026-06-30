@@ -73,6 +73,24 @@ export component MainWindow inherits Window {
     in-out property <int> widget-opacity;
     in-out property <int> widget-w;
     in-out property <int> widget-h;
+    // window & overlay
+    in-out property <int> window-layer-idx;
+    in-out property <bool> allow-forced;
+    in-out property <int> overlay-scope-idx;
+    in-out property <bool> require-full-break;
+    in-out property <bool> show-skip-button;
+    in-out property <bool> show-postpone-button;
+    in-out property <int> break-end-idx;
+    in-out property <int> sound-volume;
+    in-out property <bool> respect-dnd;
+    in-out property <bool> suppress-presentation;
+    in-out property <bool> shortcuts-enabled;
+    in-out property <bool> darkroom-enabled;
+    // widget extras
+    in-out property <int> widget-mode-idx;
+    in-out property <int> widget-layer-idx;
+    in-out property <int> widget-bg-idx;
+    in-out property <bool> widget-click-through;
     in property <string> long-hint;
     in property <string> backup-msg;
     in property <string> app-version;
@@ -299,8 +317,72 @@ export component MainWindow inherits Window {
                     }
 
                     ToggleRow {
+                        label: "Allow forced overlay";
+                        checked <=> root.allow-forced;
+                    }
+
+                    ToggleRow {
+                        label: "Require the full break (can't dismiss)";
+                        checked <=> root.require-full-break;
+                    }
+
+                    ToggleRow {
+                        label: "Show Skip button";
+                        checked <=> root.show-skip-button;
+                    }
+
+                    ToggleRow {
+                        label: "Show Postpone button";
+                        checked <=> root.show-postpone-button;
+                    }
+
+                    HorizontalLayout {
+                        height: 32px;
+                        spacing: 8px;
+                        Text {
+                            text: "Overlay covers";
+                            color: Theme.text;
+                            font-size: 14px;
+                            vertical-alignment: center;
+                            horizontal-stretch: 1;
+                        }
+
+                        ComboBox {
+                            model: ["active monitor", "all monitors"];
+                            current-index <=> root.overlay-scope-idx;
+                            width: 150px;
+                        }
+                    }
+
+                    ToggleRow {
                         label: "Play a sound on break";
                         checked <=> root.sound-enabled;
+                    }
+
+                    NumberField {
+                        label: "Sound volume";
+                        unit: "%";
+                        value <=> root.sound-volume;
+                        minimum: 0;
+                        maximum: 100;
+                    }
+
+                    HorizontalLayout {
+                        height: 32px;
+                        spacing: 8px;
+                        Text {
+                            text: "Break-over signal";
+                            color: Theme.text;
+                            font-size: 14px;
+                            vertical-alignment: center;
+                            horizontal-stretch: 1;
+                        }
+
+                        ComboBox {
+                            model: ["off", "notification", "chime", "both"];
+                            current-index <=> root.break-end-idx;
+                            width: 150px;
+                        }
                     }
 
                     NumberField {
@@ -498,6 +580,86 @@ export component MainWindow inherits Window {
                         minimum: 80;
                         maximum: 480;
                     }
+
+                    HorizontalLayout {
+                        height: 32px;
+                        spacing: 8px;
+                        Text {
+                            text: "Show widget";
+                            color: Theme.text;
+                            font-size: 14px;
+                            vertical-alignment: center;
+                            horizontal-stretch: 1;
+                        }
+
+                        ComboBox {
+                            model: ["off", "when minimized", "always"];
+                            current-index <=> root.widget-mode-idx;
+                            width: 150px;
+                        }
+                    }
+
+                    HorizontalLayout {
+                        height: 32px;
+                        spacing: 8px;
+                        Text {
+                            text: "Stacking";
+                            color: Theme.text;
+                            font-size: 14px;
+                            vertical-alignment: center;
+                            horizontal-stretch: 1;
+                        }
+
+                        ComboBox {
+                            model: ["above", "normal", "below"];
+                            current-index <=> root.widget-layer-idx;
+                            width: 130px;
+                        }
+                    }
+
+                    HorizontalLayout {
+                        height: 32px;
+                        spacing: 8px;
+                        Text {
+                            text: "Background";
+                            color: Theme.text;
+                            font-size: 14px;
+                            vertical-alignment: center;
+                            horizontal-stretch: 1;
+                        }
+
+                        ComboBox {
+                            model: ["solid", "translucent", "transparent"];
+                            current-index <=> root.widget-bg-idx;
+                            width: 130px;
+                        }
+                    }
+
+                    ToggleRow {
+                        label: "Click-through (passive)";
+                        checked <=> root.widget-click-through;
+                    }
+                }
+
+                Card {
+                    title: "Window & overlay";
+                    HorizontalLayout {
+                        height: 32px;
+                        spacing: 8px;
+                        Text {
+                            text: "Main window stacking";
+                            color: Theme.text;
+                            font-size: 14px;
+                            vertical-alignment: center;
+                            horizontal-stretch: 1;
+                        }
+
+                        ComboBox {
+                            model: ["above", "normal", "below"];
+                            current-index <=> root.window-layer-idx;
+                            width: 130px;
+                        }
+                    }
                 }
 
                 Card {
@@ -521,6 +683,26 @@ export component MainWindow inherits Window {
                         value <=> root.idle-sec;
                         minimum: 10;
                         maximum: 1800;
+                    }
+
+                    ToggleRow {
+                        label: "Respect Do-Not-Disturb";
+                        checked <=> root.respect-dnd;
+                    }
+
+                    ToggleRow {
+                        label: "Hush during fullscreen / screen-share";
+                        checked <=> root.suppress-presentation;
+                    }
+
+                    ToggleRow {
+                        label: "Dark-room warning in the evening";
+                        checked <=> root.darkroom-enabled;
+                    }
+
+                    ToggleRow {
+                        label: "Global keyboard shortcuts";
+                        checked <=> root.shortcuts-enabled;
                     }
                 }
 
@@ -727,6 +909,8 @@ export component BreakWindow inherits Window {
     in property <string> sub-text: "Relax your eyes — let your focus drift to the distance.";
     in property <string> tip-text;
     in property <bool> can-postpone: true;
+    in property <bool> show-skip: true;
+    in property <bool> show-postpone: true;
     in property <bool> calm-on: true;
     in property <bool> exercise-on: false;
     in property <bool> is-long: false;
@@ -811,7 +995,7 @@ export component BreakWindow inherits Window {
         HorizontalLayout {
             alignment: center;
             spacing: 12px;
-            PillButton {
+            if root.show-postpone && root.can-postpone : PillButton {
                 text: "Postpone";
                 ghost: true;
                 clicked => {
@@ -819,7 +1003,7 @@ export component BreakWindow inherits Window {
                 }
             }
 
-            PillButton {
+            if root.show-skip : PillButton {
                 text: "Skip break";
                 clicked => {
                     root.skip();
@@ -860,10 +1044,14 @@ export component WidgetWindow inherits Window {
     in property <string> pause-icon: "⏸";
     in property <string> shape: "squircle";
     in property <float> opacity-frac: 0.95;
+    in property <int> phase-state: 0; // 0 working · 1 break · 2 paused
     callback restore();
     callback pause();
     callback take-break();
     callback skip();
+    callback postpone();
+    callback open-settings();
+    callback quit();
     callback start-drag();
     callback start-resize();
 
@@ -890,6 +1078,7 @@ export component WidgetWindow inherits Window {
         border-color: #2b3a57;
 
         // press-drag the body to move the widget (works under X11/XWayland).
+        // right-click opens the mini menu (§4.12).
         hover := TouchArea {
             mouse-cursor: grab;
             pointer-event(e) => {
@@ -899,6 +1088,61 @@ export component WidgetWindow inherits Window {
                 }
                 if (e.kind == PointerEventKind.down && e.button == PointerEventButton.left) {
                     root.start-drag();
+                }
+                if (e.kind == PointerEventKind.down && e.button == PointerEventButton.right) {
+                    menu.show();
+                }
+            }
+        }
+
+        // right-click mini menu
+        menu := PopupWindow {
+            x: 8px;
+            y: 8px;
+            Rectangle {
+                width: 150px;
+                height: 200px;
+                background: Theme.panel;
+                border-radius: 10px;
+                border-width: 1px;
+                border-color: Theme.border;
+                VerticalLayout {
+                    padding: 6px;
+                    spacing: 1px;
+                    for it in [
+                        { t: "Open EyeCare", a: 0 },
+                        { t: "Pause / Resume", a: 1 },
+                        { t: "Take a break now", a: 2 },
+                        { t: "Skip break", a: 3 },
+                        { t: "Postpone", a: 4 },
+                        { t: "Settings", a: 5 },
+                        { t: "Quit", a: 6 },
+                    ]: Rectangle {
+                        height: 26px;
+                        border-radius: 6px;
+                        background: mt.has-hover ? #ffffff14 : transparent;
+                        HorizontalLayout {
+                            padding-left: 8px;
+                            Text {
+                                text: it.t;
+                                color: it.a == 6 ? Theme.danger : Theme.text;
+                                font-size: 13px;
+                                vertical-alignment: center;
+                            }
+                        }
+
+                        mt := TouchArea {
+                            clicked => {
+                                if (it.a == 0) { root.restore(); }
+                                if (it.a == 1) { root.pause(); }
+                                if (it.a == 2) { root.take-break(); }
+                                if (it.a == 3) { root.skip(); }
+                                if (it.a == 4) { root.postpone(); }
+                                if (it.a == 5) { root.open-settings(); }
+                                if (it.a == 6) { root.quit(); }
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -912,6 +1156,18 @@ export component WidgetWindow inherits Window {
             triggered => {
                 root.controls-visible = false;
             }
+        }
+
+        // status dot: working (green) · break (accent) · paused (amber)
+        Rectangle {
+            x: 11px;
+            y: 11px;
+            width: 9px;
+            height: 9px;
+            border-radius: 4.5px;
+            background: root.phase-state == 1
+                ? Theme.accent
+                : (root.phase-state == 2 ? #f59e0b : #34d399);
         }
 
         // ---- ring with tick marks ----
