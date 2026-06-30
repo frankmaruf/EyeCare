@@ -218,6 +218,14 @@ export component SettingsWindow inherits Window {
     in-out property <int> long-every;
     in-out property <int> long-min;
     in-out property <bool> tips-enabled;
+    in-out property <bool> blink-enabled;
+    in-out property <int> blink-min;
+    in-out property <bool> hydration-enabled;
+    in-out property <int> hydration-min;
+    in-out property <bool> posture-enabled;
+    in-out property <int> posture-min;
+    in-out property <bool> eyedrops-enabled;
+    in-out property <int> eyedrops-min;
     in property <string> long-hint;
     callback save();
     callback back();
@@ -322,6 +330,61 @@ export component SettingsWindow inherits Window {
                     ToggleRow {
                         label: "Show eye-care tips on the break screen";
                         checked <=> root.tips-enabled;
+                    }
+                }
+
+                Card {
+                    title: "Wellbeing nudges";
+                    ToggleRow {
+                        label: "Blink reminder";
+                        checked <=> root.blink-enabled;
+                    }
+
+                    NumberField {
+                        label: "Blink every";
+                        unit: "min";
+                        value <=> root.blink-min;
+                        minimum: 1;
+                        maximum: 120;
+                    }
+
+                    ToggleRow {
+                        label: "Hydration reminder";
+                        checked <=> root.hydration-enabled;
+                    }
+
+                    NumberField {
+                        label: "Hydrate every";
+                        unit: "min";
+                        value <=> root.hydration-min;
+                        minimum: 5;
+                        maximum: 240;
+                    }
+
+                    ToggleRow {
+                        label: "Posture reminder";
+                        checked <=> root.posture-enabled;
+                    }
+
+                    NumberField {
+                        label: "Posture every";
+                        unit: "min";
+                        value <=> root.posture-min;
+                        minimum: 5;
+                        maximum: 240;
+                    }
+
+                    ToggleRow {
+                        label: "Eye-drops / artificial tears";
+                        checked <=> root.eyedrops-enabled;
+                    }
+
+                    NumberField {
+                        label: "Eye-drops every";
+                        unit: "min";
+                        value <=> root.eyedrops-min;
+                        minimum: 5;
+                        maximum: 480;
                     }
                 }
             }

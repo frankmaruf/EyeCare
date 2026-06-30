@@ -2,7 +2,7 @@
 name = "eyecare-native"
 version = "0.1.0"
 edition = "2021"
-description = "EyeCare native-GUI proof-of-concept (Slint) — RAM comparison vs the Tauri build"
+description = "EyeCare — native (Rust + Slint) re-implementation"
 
 [dependencies]
 slint = { version = "1.8", default-features = false, features = [
@@ -13,6 +13,7 @@ slint = { version = "1.8", default-features = false, features = [
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 dirs = "5"
+notify-rust = "4"
 
 [build-dependencies]
 slint-build = "1.8"

@@ -18,6 +18,16 @@ pub struct Settings {
     pub long_break_every: u32,
     pub long_break_secs: u64,
     pub tips_enabled: bool,
+
+    // wellbeing nudges (notifications fired while working)
+    pub blink_enabled: bool,
+    pub blink_interval_secs: u64,
+    pub hydration_enabled: bool,
+    pub hydration_interval_secs: u64,
+    pub posture_enabled: bool,
+    pub posture_interval_secs: u64,
+    pub eyedrops_enabled: bool,
+    pub eyedrops_interval_secs: u64,
 }
 
 impl Default for Settings {
@@ -32,6 +42,14 @@ impl Default for Settings {
             long_break_every: 3,
             long_break_secs: 5 * 60,
             tips_enabled: true,
+            blink_enabled: true,
+            blink_interval_secs: 2 * 60,
+            hydration_enabled: false,
+            hydration_interval_secs: 45 * 60,
+            posture_enabled: false,
+            posture_interval_secs: 30 * 60,
+            eyedrops_enabled: false,
+            eyedrops_interval_secs: 2 * 60 * 60,
         }
     }
 }

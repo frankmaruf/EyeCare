@@ -1,7 +1,8 @@
 // EyeCare native (Rust + Slint). Dashboard + break overlay + settings + floating
-// widget, driven by the ported timer engine with persisted settings. Tray,
-// notifications, nudges, work-hours/idle/DND, shortcuts, autostart, updater and
-// packaging land in later increments. Mirrors the Tauri build (eyecare/src).
+// widget + wellbeing-nudge notifications, driven by the ported timer engine with
+// persisted settings. Tray, work-hours/idle/DND suppression, global shortcuts,
+// autostart, updater and packaging land in later increments. Mirrors the design
+// of the Tauri build (eyecare/src).
 
 mod settings;
 mod timer;
@@ -25,6 +26,15 @@ const TIPS: &[&str] = &[
 
 fn fmt(secs: u64) -> slint::SharedString {
     format!("{:02}:{:02}", secs / 60, secs % 60).into()
+}
+
+/// Fire a desktop notification (cross-platform via notify-rust).
+fn notify(title: &str, body: &str) {
+    let _ = notify_rust::Notification::new()
+        .summary(title)
+        .body(body)
+        .appname("EyeCare")
+        .show();
 }
 
 /// "≈ once an hour" style hint shown under the long-break controls.
@@ -56,6 +66,14 @@ fn populate_settings(w: &SettingsWindow, s: &Settings) {
     w.set_long_every(s.long_break_every as i32);
     w.set_long_min((s.long_break_secs / 60) as i32);
     w.set_tips_enabled(s.tips_enabled);
+    w.set_blink_enabled(s.blink_enabled);
+    w.set_blink_min((s.blink_interval_secs / 60).max(1) as i32);
+    w.set_hydration_enabled(s.hydration_enabled);
+    w.set_hydration_min((s.hydration_interval_secs / 60).max(1) as i32);
+    w.set_posture_enabled(s.posture_enabled);
+    w.set_posture_min((s.posture_interval_secs / 60).max(1) as i32);
+    w.set_eyedrops_enabled(s.eyedrops_enabled);
+    w.set_eyedrops_min((s.eyedrops_interval_secs / 60).max(1) as i32);
     w.set_long_hint(long_hint(s).into());
 }
 
@@ -70,6 +88,14 @@ fn read_settings(w: &SettingsWindow) -> Settings {
         long_break_every: w.get_long_every().max(1) as u32,
         long_break_secs: w.get_long_min().max(1) as u64 * 60,
         tips_enabled: w.get_tips_enabled(),
+        blink_enabled: w.get_blink_enabled(),
+        blink_interval_secs: w.get_blink_min().max(1) as u64 * 60,
+        hydration_enabled: w.get_hydration_enabled(),
+        hydration_interval_secs: w.get_hydration_min().max(5) as u64 * 60,
+        posture_enabled: w.get_posture_enabled(),
+        posture_interval_secs: w.get_posture_min().max(5) as u64 * 60,
+        eyedrops_enabled: w.get_eyedrops_enabled(),
+        eyedrops_interval_secs: w.get_eyedrops_min().max(5) as u64 * 60,
     }
 }
 
@@ -158,9 +184,24 @@ fn main() -> Result<(), slint::PlatformError> {
         let render = render.clone();
         let sync_break = sync_break.clone();
         ticker.start(slint::TimerMode::Repeated, Duration::from_secs(1), move || {
-            let ev = timer.borrow_mut().tick(&settings.borrow());
-            if matches!(ev, Event::BreakStart | Event::BreakEnd) {
-                sync_break();
+            let res = timer.borrow_mut().tick(&settings.borrow());
+            match res.event {
+                Event::Prewarn => notify("Eye break soon", "A break is coming up — finish your thought."),
+                Event::BreakStart | Event::BreakEnd => sync_break(),
+                Event::None => {}
+            }
+            let n = res.nudges;
+            if n.blink {
+                notify("Blink 👀", "Blink slowly and fully a few times.");
+            }
+            if n.hydration {
+                notify("Hydrate 💧", "Take a sip of water — dry eyes thank you.");
+            }
+            if n.posture {
+                notify("Posture check", "Sit back, relax your shoulders, screen an arm's length away.");
+            }
+            if n.eyedrops {
+                notify("Eye drops 💧", "Time for artificial tears / eye drops.");
             }
             render();
         });
