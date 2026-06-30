@@ -272,7 +272,29 @@ fn read_settings(w: &MainWindow, base: &Settings) -> Settings {
     }
 }
 
+/// Single-instance guard (spec §5): if a live instance holds the lock, exit.
+#[cfg(target_os = "linux")]
+fn ensure_single_instance() {
+    use std::io::Read;
+    let Some(mut p) = dirs::runtime_dir().or_else(dirs::config_dir) else { return };
+    p.push("eyecare-native.lock");
+    if let Ok(mut f) = std::fs::File::open(&p) {
+        let mut s = String::new();
+        let _ = f.read_to_string(&mut s);
+        if let Ok(pid) = s.trim().parse::<i32>() {
+            if std::path::Path::new(&format!("/proc/{pid}")).exists() {
+                eprintln!("[eyecare] already running (pid {pid}); exiting");
+                std::process::exit(0);
+            }
+        }
+    }
+    let _ = std::fs::write(&p, std::process::id().to_string());
+}
+
 fn main() -> Result<(), slint::PlatformError> {
+    #[cfg(target_os = "linux")]
+    ensure_single_instance();
+
     // Set a stable Wayland app_id / X11 WM_CLASS so the compositor can match the
     // installed .desktop and show the EyeCare icon (instead of a generic one).
     #[cfg(target_os = "linux")]
