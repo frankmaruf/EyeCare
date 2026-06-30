@@ -892,7 +892,7 @@ export component WidgetWindow inherits Window {
             height: 21px;
             border-radius: 7px;
             background: rt.has-hover ? #2a3a59 : #1c2a45;
-            opacity: hover.has-hover ? 1.0 : 0.0;
+            opacity: 0.95;
             animate opacity { duration: Theme.anim; }
             Text {
                 text: "⤢";
@@ -918,7 +918,7 @@ export component WidgetWindow inherits Window {
             width: 100%;
             alignment: center;
             spacing: 8px;
-            opacity: hover.has-hover ? 1.0 : 0.0;
+            opacity: 0.95;
             animate opacity { duration: Theme.anim; }
             IconButton {
                 icon: root.pause-icon;
@@ -949,7 +949,7 @@ export component WidgetWindow inherits Window {
             y: parent.height - 17px;
             width: 14px;
             height: 14px;
-            opacity: hover.has-hover ? 0.85 : 0.0;
+            opacity: 0.85;
             animate opacity { duration: Theme.anim; }
             Text {
                 text: "⌟";
