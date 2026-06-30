@@ -312,6 +312,17 @@ fn read_settings(w: &MainWindow, base: &Settings) -> Settings {
     }
 }
 
+/// X11 window id of a winit window (winit 0.30 exposes it via raw-window-handle).
+#[cfg(target_os = "linux")]
+fn x11_window_id(win: &i_slint_backend_winit::winit::window::Window) -> Option<u32> {
+    use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+    match win.window_handle().ok()?.as_raw() {
+        RawWindowHandle::Xlib(x) => Some(x.window as u32),
+        RawWindowHandle::Xcb(x) => Some(x.window.get()),
+        _ => None,
+    }
+}
+
 /// Single-instance guard (spec §5): if a live instance holds the lock, exit.
 #[cfg(target_os = "linux")]
 fn ensure_single_instance() {
@@ -577,10 +588,15 @@ fn main() -> Result<(), slint::PlatformError> {
                     win.set_window_level(WindowLevel::AlwaysOnTop);
                 });
                 let _ = w.show();
-                // bring the break overlay to the front + focus it
+                // bring the break overlay to the front + focus it (and keep it
+                // out of the taskbar)
                 w.window().with_winit_window(|win| {
                     win.set_visible(true);
                     win.focus_window();
+                    #[cfg(target_os = "linux")]
+                    if let Some(xid) = x11_window_id(win) {
+                        platform::x11_skip_taskbar(xid);
+                    }
                 });
             } else {
                 let _ = w.hide();
@@ -592,6 +608,13 @@ fn main() -> Result<(), slint::PlatformError> {
     let _ = break_win.hide();
     let _ = widget_win.show();
     apply_chrome();
+    // keep the widget out of the taskbar — it lives in the tray (X11)
+    #[cfg(target_os = "linux")]
+    widget_win.window().with_winit_window(|win| {
+        if let Some(xid) = x11_window_id(win) {
+            platform::x11_skip_taskbar(xid);
+        }
+    });
 
     // 1-second tick.
     let ticker = slint::Timer::default();
@@ -1231,5 +1254,11 @@ fn main() -> Result<(), slint::PlatformError> {
         });
     }
 
-    main_win.run()
+    // Tray-first: the dashboard stays hidden (lives in the tray) unless launched
+    // with --show (the app-menu entry passes it). Autostart/boot has no flag, so
+    // it comes up silently in the tray. Open later via the tray or the widget.
+    if std::env::args().any(|a| a == "--show") {
+        let _ = main_win.show();
+    }
+    slint::run_event_loop()
 }

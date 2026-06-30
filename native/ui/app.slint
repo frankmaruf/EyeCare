@@ -218,24 +218,80 @@ export component MainWindow inherits Window {
     if root.show-settings : VerticalLayout {
         width: 100%;
         height: 100%;
-        padding: 20px;
-        spacing: 14px;
+        padding: 0px;
+        spacing: 0px;
 
-        HorizontalLayout {
-            spacing: 10px;
+        // sticky header: back · title · Save (absolute layout = predictable)
+        Rectangle {
+            height: 62px;
+            background: Theme.bg;
+
+            // back arrow
+            Rectangle {
+                x: 18px;
+                y: 13px;
+                width: 36px;
+                height: 36px;
+                border-radius: 9px;
+                border-width: 1px;
+                border-color: Theme.border;
+                background: backbt.has-hover ? #ffffff14 : transparent;
+                Text {
+                    text: "←";
+                    color: Theme.text;
+                    font-size: 19px;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                    width: 100%;
+                    height: 100%;
+                }
+
+                backbt := TouchArea {
+                    clicked => {
+                        root.back();
+                    }
+                }
+            }
+
+            // title + subtitle
             Text {
+                x: 66px;
+                y: 13px;
                 text: "Settings";
                 color: Theme.text;
                 font-size: 20px;
                 font-weight: 700;
-                vertical-alignment: center;
-                horizontal-stretch: 1;
             }
+
+            Text {
+                x: 66px;
+                y: 37px;
+                text: "Tune your breaks, widget & reminders";
+                color: Theme.muted;
+                font-size: 11px;
+            }
+
+            // Save (right)
+            saveb := PillButton {
+                width: 92px;
+                x: parent.width - self.width - 18px;
+                y: (parent.height - self.height) / 2;
+                text: "Save";
+                clicked => {
+                    root.save();
+                }
+            }
+        }
+
+        Rectangle {
+            height: 1px;
+            background: Theme.border;
         }
 
         ScrollView {
             vertical-stretch: 1;
             VerticalLayout {
+                padding: 18px;
                 spacing: 14px;
 
                 Card {
@@ -875,24 +931,6 @@ export component MainWindow inherits Window {
             }
         }
 
-        HorizontalLayout {
-            spacing: 10px;
-            alignment: start;
-            PillButton {
-                text: "Save settings";
-                clicked => {
-                    root.save();
-                }
-            }
-
-            PillButton {
-                text: "Back";
-                ghost: true;
-                clicked => {
-                    root.back();
-                }
-            }
-        }
     }
 }
 

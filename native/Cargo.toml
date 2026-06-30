@@ -28,6 +28,8 @@ ksni = "0.2"
 png = "0.17"
 # read X11 window state for presentation/fullscreen suppression (§9.9)
 x11rb = "0.13"
+# get the X11 window id from winit (skip-taskbar)
+raw-window-handle = "0.6"
 
 [build-dependencies]
 slint-build = "1.8"

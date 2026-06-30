@@ -37,6 +37,48 @@ pub fn another_app_fullscreen() -> bool {
     false
 }
 
+/// Tell the WM to keep this X11 window out of the taskbar + pager (so the widget
+/// lives only in the tray, not the task switcher). `xid` is the Xlib window.
+#[cfg(target_os = "linux")]
+pub fn x11_skip_taskbar(xid: u32) {
+    use x11rb::connection::Connection;
+    use x11rb::protocol::xproto::{
+        ClientMessageEvent, ConnectionExt, EventMask, CLIENT_MESSAGE_EVENT,
+    };
+    let _ = (|| -> Option<()> {
+        let (conn, screen) = x11rb::connect(None).ok()?;
+        let root = conn.setup().roots[screen].root;
+        let wm_state = conn.intern_atom(false, b"_NET_WM_STATE").ok()?.reply().ok()?.atom;
+        let skip_tb = conn
+            .intern_atom(false, b"_NET_WM_STATE_SKIP_TASKBAR").ok()?.reply().ok()?.atom;
+        let skip_pg = conn
+            .intern_atom(false, b"_NET_WM_STATE_SKIP_PAGER").ok()?.reply().ok()?.atom;
+        for atom in [skip_tb, skip_pg] {
+            // data: [_NET_WM_STATE_ADD=1, atom, 0, source=1 (app), 0]
+            let ev = ClientMessageEvent {
+                response_type: CLIENT_MESSAGE_EVENT,
+                format: 32,
+                sequence: 0,
+                window: xid,
+                type_: wm_state,
+                data: [1, atom, 0, 1, 0].into(),
+            };
+            conn.send_event(
+                false,
+                root,
+                EventMask::SUBSTRUCTURE_NOTIFY | EventMask::SUBSTRUCTURE_REDIRECT,
+                ev,
+            )
+            .ok()?;
+        }
+        conn.flush().ok()?;
+        Some(())
+    })();
+}
+
+#[cfg(not(target_os = "linux"))]
+pub fn x11_skip_taskbar(_xid: u32) {}
+
 /// Play a short completion chime at the given volume (0–100). Best-effort via a
 /// system player; silently does nothing if none is present.
 #[cfg(target_os = "linux")]

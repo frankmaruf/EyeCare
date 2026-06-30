@@ -1332,6 +1332,7 @@ dependencies = [
  "ksni",
  "notify-rust",
  "png 0.17.16",
+ "raw-window-handle",
  "rfd",
  "serde",
  "serde_json",
