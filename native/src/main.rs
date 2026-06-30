@@ -860,8 +860,10 @@ fn main() -> Result<(), slint::PlatformError> {
                             if let Some(m) = main_w.upgrade() {
                                 let _ = m.show();
                                 m.window().with_winit_window(|win| {
+                                    win.set_minimized(false);
                                     win.set_visible(true);
                                     win.focus_window();
+                                    win.request_redraw();
                                 });
                             }
                         }
