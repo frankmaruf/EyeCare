@@ -479,6 +479,7 @@ fn main() -> Result<(), slint::PlatformError> {
                     if settings.borrow().stats_enabled {
                         stats.borrow_mut().record(true);
                     }
+                    notify("Break over", "Welcome back — your eyes thank you.");
                     sync_break();
                 }
                 Event::None => {}
