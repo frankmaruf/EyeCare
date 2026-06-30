@@ -16,6 +16,7 @@ dirs = "5"
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 auto-launch = "0.5"
 rfd = "0.15"
+ureq = { version = "2", features = ["tls", "json"] }
 notify-rust = "4"
 i-slint-backend-winit = "1.8"
 user-idle = "0.6"

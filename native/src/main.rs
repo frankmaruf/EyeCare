@@ -7,6 +7,7 @@
 mod settings;
 mod stats;
 mod timer;
+mod updater;
 #[cfg(target_os = "linux")]
 mod tray;
 
@@ -540,6 +541,7 @@ fn main() -> Result<(), slint::PlatformError> {
             w.set_stat_streak(streak as i32);
             w.set_stat_today(today as i32);
             w.set_stat_total(total as i32);
+            w.set_app_version(updater::current_version().into());
             w.set_show_settings(true);
             w.window().set_size(slint::LogicalSize::new(580.0, 680.0));
         });
@@ -642,6 +644,65 @@ fn main() -> Result<(), slint::PlatformError> {
             w.set_backup_msg("Imported ✓".into());
             render();
         });
+    }
+
+    // ---- updater: check GitHub releases for a newer native build ----
+    let upd_asset: Rc<RefCell<Option<String>>> = Rc::new(RefCell::new(None));
+    let (upd_tx, upd_rx) = std::sync::mpsc::channel::<(String, Option<String>, bool)>();
+    {
+        let mw = main_win.as_weak();
+        let upd_tx = upd_tx.clone();
+        main_win.on_check_update(move || {
+            if let Some(w) = mw.upgrade() {
+                w.set_update_status("Checking…".into());
+            }
+            let tx = upd_tx.clone();
+            std::thread::spawn(move || {
+                let (status, asset, avail) = updater::evaluate();
+                let _ = tx.send((status, asset, avail));
+            });
+        });
+    }
+    {
+        let mw = main_win.as_weak();
+        let upd_asset = upd_asset.clone();
+        let upd_tx = upd_tx.clone();
+        main_win.on_install_update(move || {
+            let Some(url) = upd_asset.borrow().clone() else { return };
+            if let Some(w) = mw.upgrade() {
+                w.set_update_status("Downloading…".into());
+            }
+            let tx = upd_tx.clone();
+            std::thread::spawn(move || match updater::install(&url) {
+                Ok(exe) => {
+                    let _ = tx.send(("Installed — restarting…".into(), None, false));
+                    std::thread::sleep(std::time::Duration::from_millis(400));
+                    let _ = std::process::Command::new(exe).spawn();
+                    std::process::exit(0);
+                }
+                Err(e) => {
+                    let _ = tx.send((format!("Install failed: {e}"), None, false));
+                }
+            });
+        });
+    }
+    let upd_timer = slint::Timer::default();
+    {
+        let mw = main_win.as_weak();
+        let upd_asset = upd_asset.clone();
+        upd_timer.start(
+            slint::TimerMode::Repeated,
+            Duration::from_millis(250),
+            move || {
+                while let Ok((status, asset, avail)) = upd_rx.try_recv() {
+                    *upd_asset.borrow_mut() = asset;
+                    if let Some(w) = mw.upgrade() {
+                        w.set_update_status(status.into());
+                        w.set_update_available(avail);
+                    }
+                }
+            },
+        );
     }
 
     // ---- floating widget: restore, geometry, drag, resize, persistence ----

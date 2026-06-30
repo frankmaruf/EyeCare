@@ -73,10 +73,15 @@ export component MainWindow inherits Window {
     in-out property <int> widget-h;
     in property <string> long-hint;
     in property <string> backup-msg;
+    in property <string> app-version;
+    in property <string> update-status;
+    in property <bool> update-available;
     callback save();
     callback back();
     callback export-settings();
     callback import-settings();
+    callback check-update();
+    callback install-update();
 
     // live appearance preview while editing (before Save persists it)
     changed accent-idx => {
@@ -643,6 +648,41 @@ export component MainWindow inherits Window {
 
                     Text {
                         text: root.backup-msg;
+                        color: Theme.muted;
+                        font-size: 12px;
+                        wrap: word-wrap;
+                    }
+                }
+
+                Card {
+                    title: "Updates";
+                    Text {
+                        text: "EyeCare v\{root.app-version}";
+                        color: Theme.muted;
+                        font-size: 13px;
+                    }
+
+                    HorizontalLayout {
+                        spacing: 10px;
+                        alignment: start;
+                        PillButton {
+                            text: "Check for updates";
+                            ghost: true;
+                            clicked => {
+                                root.check-update();
+                            }
+                        }
+
+                        if root.update-available: PillButton {
+                            text: "Download & install";
+                            clicked => {
+                                root.install-update();
+                            }
+                        }
+                    }
+
+                    Text {
+                        text: root.update-status;
                         color: Theme.muted;
                         font-size: 12px;
                         wrap: word-wrap;
