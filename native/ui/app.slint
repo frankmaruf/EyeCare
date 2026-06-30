@@ -910,28 +910,30 @@ export component WidgetWindow inherits Window {
 
         // ---- ring with tick marks ----
         ringbox := Rectangle {
-            width: 104px;
-            height: 104px;
-            y: 8px;
+            // dial scales with the widget (kept circular = smaller side)
+            property <length> d: min(parent.width, parent.height) - 24px;
+            width: self.d;
+            height: self.d;
             x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2 - 10px;
 
             // track
             Rectangle {
                 width: 100%;
                 height: 100%;
                 border-radius: self.width / 2;
-                border-width: 9px;
+                border-width: parent.d * 0.087;
                 border-color: Theme.ring-track;
             }
 
             // 12 tick dots around the dial (placed by angle; no rotation API)
             for i in 12: Rectangle {
-                width: 3px;
-                height: 3px;
-                border-radius: 1.5px;
+                width: parent.d * 0.029;
+                height: self.width;
+                border-radius: self.width / 2;
                 background: #3a4a66;
-                x: 52px + 34px * Math.sin(i * 30deg) - 1.5px;
-                y: 52px - 34px * Math.cos(i * 30deg) - 1.5px;
+                x: parent.width / 2 + parent.d * 0.327 * Math.sin(i * 30deg) - self.width / 2;
+                y: parent.height / 2 - parent.d * 0.327 * Math.cos(i * 30deg) - self.height / 2;
             }
 
             // progress arc
@@ -941,7 +943,7 @@ export component WidgetWindow inherits Window {
                 viewbox-width: 100;
                 viewbox-height: 100;
                 stroke: Theme.accent;
-                stroke-width: 9px;
+                stroke-width: parent.d * 0.087;
                 MoveTo {
                     x: 50;
                     y: 6;
@@ -959,7 +961,7 @@ export component WidgetWindow inherits Window {
             Text {
                 text: root.time-text;
                 color: Theme.text;
-                font-size: 27px;
+                font-size: parent.d * 0.26;
                 font-weight: 700;
                 width: 100%;
                 height: 100%;
