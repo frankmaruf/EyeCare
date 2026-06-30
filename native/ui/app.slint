@@ -304,8 +304,11 @@ export component SettingsWindow inherits Window {
     in-out property <int> widget-w;
     in-out property <int> widget-h;
     in property <string> long-hint;
+    in property <string> backup-msg;
     callback save();
     callback back();
+    callback export-settings();
+    callback import-settings();
 
     VerticalLayout {
         padding: 20px;
@@ -731,6 +734,36 @@ export component SettingsWindow inherits Window {
                     ToggleRow {
                         label: "Track habit stats (local only, no telemetry)";
                         checked <=> root.stats-enabled;
+                    }
+                }
+
+                Card {
+                    title: "Backup";
+                    HorizontalLayout {
+                        spacing: 10px;
+                        alignment: start;
+                        PillButton {
+                            text: "Export settings";
+                            ghost: true;
+                            clicked => {
+                                root.export-settings();
+                            }
+                        }
+
+                        PillButton {
+                            text: "Import settings";
+                            ghost: true;
+                            clicked => {
+                                root.import-settings();
+                            }
+                        }
+                    }
+
+                    Text {
+                        text: root.backup-msg;
+                        color: Theme.muted;
+                        font-size: 12px;
+                        wrap: word-wrap;
                     }
                 }
             }

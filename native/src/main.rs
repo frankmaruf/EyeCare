@@ -578,6 +578,69 @@ fn main() -> Result<(), slint::PlatformError> {
             }
         });
     }
+    // export / import settings JSON via a native file dialog
+    {
+        let settings_w = settings_win.as_weak();
+        let settings = settings.clone();
+        settings_win.on_export_settings(move || {
+            let Some(w) = settings_w.upgrade() else { return };
+            if let Some(path) = rfd::FileDialog::new()
+                .add_filter("JSON", &["json"])
+                .set_file_name("eyecare-settings.json")
+                .save_file()
+            {
+                let ok = serde_json::to_string_pretty(&*settings.borrow())
+                    .ok()
+                    .and_then(|j| std::fs::write(&path, j).ok())
+                    .is_some();
+                w.set_backup_msg(if ok { "Exported ✓".into() } else { "Export failed".into() });
+            }
+        });
+    }
+    {
+        let settings_w = settings_win.as_weak();
+        let widget_w = widget_win.as_weak();
+        let main_w = main_win.as_weak();
+        let break_w = break_win.as_weak();
+        let settings = settings.clone();
+        let timer = timer.clone();
+        let render = render.clone();
+        settings_win.on_import_settings(move || {
+            let Some(w) = settings_w.upgrade() else { return };
+            let Some(path) = rfd::FileDialog::new().add_filter("JSON", &["json"]).pick_file() else {
+                return;
+            };
+            let next = std::fs::read_to_string(&path)
+                .ok()
+                .and_then(|t| serde_json::from_str::<Settings>(&t).ok());
+            let Some(next) = next else {
+                w.set_backup_msg("Import failed".into());
+                return;
+            };
+            timer.borrow_mut().apply_settings(&next);
+            next.save();
+            *settings.borrow_mut() = next;
+            let s = settings.borrow();
+            let c = parse_color(&s.accent);
+            set_theme!(w, c, s.reduce_motion, s.high_contrast);
+            if let Some(m) = main_w.upgrade() {
+                set_theme!(m, c, s.reduce_motion, s.high_contrast);
+            }
+            if let Some(b) = break_w.upgrade() {
+                set_theme!(b, c, s.reduce_motion, s.high_contrast);
+            }
+            if let Some(wd) = widget_w.upgrade() {
+                set_theme!(wd, c, s.reduce_motion, s.high_contrast);
+                wd.window()
+                    .set_size(slint::LogicalSize::new(s.widget_width as f32, s.widget_height as f32));
+            }
+            apply_autostart(s.autostart);
+            populate_settings(&w, &s);
+            drop(s);
+            w.set_backup_msg("Imported ✓".into());
+            render();
+        });
+    }
 
     // ---- floating widget: restore, geometry, drag, resize, persistence ----
     {
