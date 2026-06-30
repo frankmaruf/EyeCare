@@ -343,6 +343,12 @@ fn main() -> Result<(), slint::PlatformError> {
             if let Some(w) = settings_w.upgrade() {
                 populate_settings(&w, &settings.borrow());
                 let _ = w.show();
+                // bring it to the front + focus (a hidden window can otherwise
+                // re-appear behind the dashboard, looking like nothing happened)
+                w.window().with_winit_window(|win| {
+                    win.set_visible(true);
+                    win.focus_window();
+                });
             }
         });
     }
