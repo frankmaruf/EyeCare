@@ -22,6 +22,7 @@ pub struct Settings {
     pub tips_enabled: bool,
     pub exercises_enabled: bool,
     pub calm_visuals_enabled: bool,
+    pub stats_enabled: bool,
 
     // wellbeing nudges (notifications fired while working)
     pub blink_enabled: bool,
@@ -76,6 +77,7 @@ impl Default for Settings {
             tips_enabled: true,
             exercises_enabled: false,
             calm_visuals_enabled: true,
+            stats_enabled: true,
             blink_enabled: true,
             blink_interval_secs: 2 * 60,
             hydration_enabled: false,

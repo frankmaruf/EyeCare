@@ -281,6 +281,10 @@ export component SettingsWindow inherits Window {
     in-out property <bool> wd-sun;
     in-out property <bool> evening-enabled;
     in-out property <int> evening-hour;
+    in-out property <bool> stats-enabled;
+    in property <int> stat-streak;
+    in property <int> stat-today;
+    in property <int> stat-total;
     in-out property <bool> long-enabled;
     in-out property <int> long-every;
     in-out property <int> long-min;
@@ -664,6 +668,69 @@ export component SettingsWindow inherits Window {
                     ToggleRow {
                         label: "High contrast";
                         checked <=> root.high-contrast;
+                    }
+                }
+
+                Card {
+                    title: "Habit stats";
+                    HorizontalLayout {
+                        spacing: 12px;
+                        alignment: space-around;
+                        VerticalLayout {
+                            Text {
+                                text: "\{root.stat-streak}";
+                                color: Theme.accent;
+                                font-size: 26px;
+                                font-weight: 700;
+                                horizontal-alignment: center;
+                            }
+
+                            Text {
+                                text: "day streak";
+                                color: Theme.muted;
+                                font-size: 12px;
+                                horizontal-alignment: center;
+                            }
+                        }
+
+                        VerticalLayout {
+                            Text {
+                                text: "\{root.stat-today}";
+                                color: Theme.accent;
+                                font-size: 26px;
+                                font-weight: 700;
+                                horizontal-alignment: center;
+                            }
+
+                            Text {
+                                text: "today";
+                                color: Theme.muted;
+                                font-size: 12px;
+                                horizontal-alignment: center;
+                            }
+                        }
+
+                        VerticalLayout {
+                            Text {
+                                text: "\{root.stat-total}";
+                                color: Theme.accent;
+                                font-size: 26px;
+                                font-weight: 700;
+                                horizontal-alignment: center;
+                            }
+
+                            Text {
+                                text: "total breaks";
+                                color: Theme.muted;
+                                font-size: 12px;
+                                horizontal-alignment: center;
+                            }
+                        }
+                    }
+
+                    ToggleRow {
+                        label: "Track habit stats (local only, no telemetry)";
+                        checked <=> root.stats-enabled;
                     }
                 }
             }

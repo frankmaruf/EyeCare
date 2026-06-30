@@ -5,6 +5,7 @@
 // of the Tauri build (eyecare/src).
 
 mod settings;
+mod stats;
 mod timer;
 
 use std::cell::{Cell, RefCell};
@@ -14,6 +15,7 @@ use std::time::Duration;
 
 use i_slint_backend_winit::WinitWindowAccessor;
 use settings::Settings;
+use stats::Stats;
 use timer::{Event, Phase, Timer};
 
 slint::include_modules!();
@@ -184,6 +186,7 @@ fn populate_settings(w: &SettingsWindow, s: &Settings) {
     w.set_tips_enabled(s.tips_enabled);
     w.set_exercises_enabled(s.exercises_enabled);
     w.set_calm_enabled(s.calm_visuals_enabled);
+    w.set_stats_enabled(s.stats_enabled);
     w.set_blink_enabled(s.blink_enabled);
     w.set_blink_min((s.blink_interval_secs / 60).max(1) as i32);
     w.set_hydration_enabled(s.hydration_enabled);
@@ -234,6 +237,7 @@ fn read_settings(w: &SettingsWindow, base: &Settings) -> Settings {
         tips_enabled: w.get_tips_enabled(),
         exercises_enabled: w.get_exercises_enabled(),
         calm_visuals_enabled: w.get_calm_enabled(),
+        stats_enabled: w.get_stats_enabled(),
         blink_enabled: w.get_blink_enabled(),
         blink_interval_secs: w.get_blink_min().max(1) as u64 * 60,
         hydration_enabled: w.get_hydration_enabled(),
@@ -254,6 +258,7 @@ fn read_settings(w: &SettingsWindow, base: &Settings) -> Settings {
 fn main() -> Result<(), slint::PlatformError> {
     let settings = Rc::new(RefCell::new(Settings::load()));
     let timer = Rc::new(RefCell::new(Timer::new(&settings.borrow())));
+    let stats = Rc::new(RefCell::new(Stats::load()));
     // 0 = running, 1 = idle-paused, 2 = outside work hours
     let gate = Rc::new(Cell::new(0u8));
     let evening_day = Rc::new(Cell::new(-1i64));
@@ -391,6 +396,7 @@ fn main() -> Result<(), slint::PlatformError> {
         let sync_break = sync_break.clone();
         let gate = gate.clone();
         let evening_day = evening_day.clone();
+        let stats = stats.clone();
         ticker.start(slint::TimerMode::Repeated, Duration::from_secs(1), move || {
             // Evening warm-screen nudge: once per day at the chosen hour.
             {
@@ -431,7 +437,12 @@ fn main() -> Result<(), slint::PlatformError> {
                     notify("Time for an eye break", "Look ~20 feet (6 m) away and relax your eyes.");
                     sync_break();
                 }
-                Event::BreakEnd => sync_break(),
+                Event::BreakEnd => {
+                    if settings.borrow().stats_enabled {
+                        stats.borrow_mut().record(true);
+                    }
+                    sync_break();
+                }
                 Event::None => {}
             }
             let n = res.nudges;
@@ -477,8 +488,23 @@ fn main() -> Result<(), slint::PlatformError> {
     });
     action!(main_win.on_take_break, |t, s| t.take_break(&s));
     action!(main_win.on_skip, |t, s| t.skip(&s));
-    action!(break_win.on_skip, |t, s| t.skip(&s));
     action!(break_win.on_postpone, |t, s| t.postpone(&s));
+    {
+        let timer = timer.clone();
+        let settings = settings.clone();
+        let render = render.clone();
+        let sync_break = sync_break.clone();
+        let stats = stats.clone();
+        break_win.on_skip(move || {
+            let was_break = timer.borrow().phase == Phase::Break;
+            timer.borrow_mut().skip(&settings.borrow());
+            if was_break && settings.borrow().stats_enabled {
+                stats.borrow_mut().record(false);
+            }
+            sync_break();
+            render();
+        });
+    }
     action!(widget_win.on_pause, |t, _s| {
         let p = !t.paused;
         t.set_paused(p)
@@ -490,9 +516,14 @@ fn main() -> Result<(), slint::PlatformError> {
     {
         let settings_w = settings_win.as_weak();
         let settings = settings.clone();
+        let stats = stats.clone();
         main_win.on_open_settings(move || {
             if let Some(w) = settings_w.upgrade() {
                 populate_settings(&w, &settings.borrow());
+                let (streak, today, total) = stats.borrow().summary();
+                w.set_stat_streak(streak as i32);
+                w.set_stat_today(today as i32);
+                w.set_stat_total(total as i32);
                 let _ = w.show();
                 // bring it to the front + focus (a hidden window can otherwise
                 // re-appear behind the dashboard, looking like nothing happened)
