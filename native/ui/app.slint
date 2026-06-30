@@ -883,11 +883,15 @@ export component WidgetWindow inherits Window {
         border-width: 1px;
         border-color: #2b3a57;
 
-        // hover detector only. NO in-app drag: on Wayland drag_window makes the
-        // compositor grab the pointer for a move it won't track, freezing the
-        // widget on every press and eating button clicks. Move via the WM
-        // (Meta+drag); resize via Settings → widget Width/Height.
-        hover := TouchArea { }
+        // press-drag the body to move the widget (works under X11/XWayland).
+        hover := TouchArea {
+            mouse-cursor: grab;
+            pointer-event(e) => {
+                if (e.kind == PointerEventKind.down && e.button == PointerEventButton.left) {
+                    root.start-drag();
+                }
+            }
+        }
 
         // auto-hide the controls 2.5s after the pointer leaves
         hide-timer := Timer {
@@ -1035,7 +1039,14 @@ export component WidgetWindow inherits Window {
                 y: (9 - i * 4) * 1px;
             }
 
-            rz := TouchArea { }
+            rz := TouchArea {
+                mouse-cursor: nwse-resize;
+                pointer-event(e) => {
+                    if (e.kind == PointerEventKind.down && e.button == PointerEventButton.left) {
+                        root.start-resize();
+                    }
+                }
+            }
         }
     }
 }

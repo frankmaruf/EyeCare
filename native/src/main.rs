@@ -292,6 +292,16 @@ fn ensure_single_instance() {
 }
 
 fn main() -> Result<(), slint::PlatformError> {
+    // Force XWayland (X11). Native Wayland (KWin) restricts a client moving /
+    // resizing / always-on-topping / re-showing its own windows — which breaks
+    // widget drag/resize, tray "Open", and keep-above. X11 restores all of it
+    // (spec §7.8). The Tauri build did the same via GDK_BACKEND=x11.
+    #[cfg(target_os = "linux")]
+    if std::env::var_os("WAYLAND_DISPLAY").is_some() {
+        std::env::set_var("WINIT_UNIX_BACKEND", "x11");
+        std::env::remove_var("WAYLAND_DISPLAY");
+    }
+
     #[cfg(target_os = "linux")]
     ensure_single_instance();
 
