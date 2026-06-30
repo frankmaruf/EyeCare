@@ -1340,6 +1340,7 @@ dependencies = [
  "slint-build",
  "ureq",
  "user-idle",
+ "x11",
  "x11rb",
 ]
 

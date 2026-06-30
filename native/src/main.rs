@@ -373,7 +373,24 @@ fn ensure_single_instance() {
     let _ = std::fs::write(&p, std::process::id().to_string());
 }
 
+/// Swallow non-fatal Xlib errors instead of exiting. global-hotkey's XGrabKey
+/// BadAccess (key already grabbed by the desktop) would otherwise hit Xlib's
+/// default handler, which calls exit() — killing the whole app. GLX also uses
+/// Xlib, so this protects window/GL setup from the same async error too.
+#[cfg(target_os = "linux")]
+unsafe extern "C" fn xlib_error_noop(
+    _display: *mut x11::xlib::Display,
+    _event: *mut x11::xlib::XErrorEvent,
+) -> std::os::raw::c_int {
+    0
+}
+
 fn main() -> Result<(), slint::PlatformError> {
+    #[cfg(target_os = "linux")]
+    unsafe {
+        x11::xlib::XSetErrorHandler(Some(xlib_error_noop));
+    }
+
     // Force XWayland (X11). Native Wayland (KWin) restricts a client moving /
     // resizing / always-on-topping / re-showing its own windows — which breaks
     // widget drag/resize, tray "Open", and keep-above. X11 restores all of it
@@ -890,7 +907,13 @@ fn main() -> Result<(), slint::PlatformError> {
     }
 
     // ---- global keyboard shortcuts (§4.8): Ctrl+Alt+ P/B/K/O ----
-    let _hotkeys = {
+    // Global shortcuts are OFF by default: registering them is XGrabKey, which
+    // BadAccess-crashes the process (via Xlib's default handler / glutin's sync
+    // error check) when the combo is already grabbed by the desktop (common on
+    // KDE). Opt in with EYECARE_HOTKEYS=1 once non-conflicting keys are chosen.
+    let _hotkeys = if std::env::var_os("EYECARE_HOTKEYS").is_none() {
+        None
+    } else {
         use global_hotkey::hotkey::{Code, HotKey, Modifiers};
         use global_hotkey::{GlobalHotKeyEvent, GlobalHotKeyManager, HotKeyState};
         match GlobalHotKeyManager::new() {

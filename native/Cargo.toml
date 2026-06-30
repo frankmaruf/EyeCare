@@ -30,6 +30,9 @@ png = "0.17"
 x11rb = "0.13"
 # get the X11 window id from winit (skip-taskbar)
 raw-window-handle = "0.6"
+# install a non-fatal Xlib error handler (global-hotkey's XGrabKey can BadAccess
+# on a key conflict, and Xlib's default handler exits the process)
+x11 = { version = "2", features = ["xlib"] }
 
 [build-dependencies]
 slint-build = "1.8"
