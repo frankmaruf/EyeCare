@@ -356,6 +356,25 @@ fn raise_main(m: &MainWindow) {
     }
 }
 
+/// Relaunch the app (and exit this process). Used when a setting needs a fresh
+/// start — e.g. switching renderer (Low-RAM mode). The 1s delay lets this process
+/// and its single-instance lock clear before the new one checks it; --show brings
+/// the dashboard back.
+fn restart_self() -> ! {
+    if let Ok(exe) = std::env::current_exe() {
+        #[cfg(target_os = "linux")]
+        {
+            let cmd = format!("sleep 1; exec \"{}\" --show", exe.to_string_lossy());
+            let _ = std::process::Command::new("sh").arg("-c").arg(cmd).spawn();
+        }
+        #[cfg(not(target_os = "linux"))]
+        {
+            let _ = std::process::Command::new(&exe).arg("--show").spawn();
+        }
+    }
+    std::process::exit(0);
+}
+
 /// Single-instance guard (spec §5): if a live instance holds the lock, exit.
 #[cfg(target_os = "linux")]
 fn ensure_single_instance() {
@@ -888,10 +907,16 @@ fn main() -> Result<(), slint::PlatformError> {
         let apply_chrome = apply_chrome.clone();
         main_win.on_save(move || {
             let Some(w) = mw.upgrade() else { return };
+            let was_low_ram = settings.borrow().low_ram;
             let next = read_settings(&w, &settings.borrow());
+            // switching renderer (Low-RAM mode) needs a fresh backend → restart
+            let renderer_changed = next.low_ram != was_low_ram;
             timer.borrow_mut().apply_settings(&next);
             next.save();
             *settings.borrow_mut() = next;
+            if renderer_changed {
+                restart_self();
+            }
             let s = settings.borrow();
             let c = parse_color(&s.accent);
             set_theme!(w, c, s.reduce_motion, s.high_contrast);

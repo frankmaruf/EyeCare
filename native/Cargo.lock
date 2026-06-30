@@ -1322,7 +1322,7 @@ dependencies = [
 
 [[package]]
 name = "eyecare-native"
-version = "0.1.7"
+version = "0.1.8"
 dependencies = [
  "auto-launch",
  "chrono",
