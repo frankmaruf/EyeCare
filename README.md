@@ -83,7 +83,7 @@ Grab the `.msi` / `.exe` (Windows) or `.dmg` (macOS) from [Releases](https://git
 
 ### Native low-RAM build (Linux · macOS · Windows)
 For ~44 MB RAM instead of ~600 MB, grab the **native** binary for your OS from
-the latest [`native-v*` prerelease](https://github.com/frankmaruf/EyeCare/releases):
+the [latest release](https://github.com/frankmaruf/EyeCare/releases/latest):
 
 | OS | Asset |
 |----|-------|
@@ -161,15 +161,18 @@ npm run tauri build -- --bundles appimage         # + nsis / dmg on their OSes
 ```
 Upload the bundle, its `.sig`, and `latest.json` to the GitHub release the updater endpoint points at (`plugins.updater` in `src-tauri/tauri.conf.json`). **Never commit the private key.**
 
-**Native build releases** are independent: push a `native-v*` tag and the
-[`native-release`](.github/workflows/native-release.yml) workflow builds the
-Linux binary and publishes it as a **prerelease** (so it never becomes the repo's
-"latest" or disturbs the Tauri `latest.json` updater). The native in-app updater
-scans `native-v*` tags for an `eyecare-native*` asset.
+**Native is now the primary build.** Push a `native-v*` tag and the
+[`native-release`](.github/workflows/native-release.yml) workflow builds Linux,
+macOS and Windows binaries and publishes them as the repo's latest release. The
+native in-app updater scans `native-v*` tags for the `eyecare-native-<os>-*`
+asset matching the running OS.
 ```bash
 # bump native/Cargo.toml version to match, then:
-git tag native-v0.1.1 && git push origin native-v0.1.1
+git tag native-v0.1.3 && git push origin native-v0.1.3
 ```
+> Note: promoting native to "latest" supersedes the old Tauri `latest.json`
+> auto-updater — the legacy Tauri app's in-app "Check for updates" no longer
+> resolves. Native ships its own updater.
 
 ---
 
