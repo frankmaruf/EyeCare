@@ -420,7 +420,11 @@ fn main() -> Result<(), slint::PlatformError> {
             if let Ok(exe) = std::env::current_exe() {
                 let err = std::process::Command::new(exe)
                     .args(std::env::args_os().skip(1))
-                    .env("MALLOC_ARENA_MAX", "2")
+                    // 1 arena = lowest virtual reservation; trim freed pages back
+                    // to the OS aggressively so RSS stays tight too.
+                    .env("MALLOC_ARENA_MAX", "1")
+                    .env("MALLOC_TRIM_THRESHOLD_", "65536")
+                    .env("MALLOC_TOP_PAD_", "0")
                     .exec(); // replaces this process; only returns on failure
                 eprintln!("[eyecare] re-exec for MALLOC_ARENA_MAX failed: {err}");
             }
