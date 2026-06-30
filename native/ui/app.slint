@@ -1,4 +1,4 @@
-import { Theme, Ring, PillButton, Card, NumberField, ToggleRow, IconButton } from "theme.slint";
+import { Theme, Ring, PillButton, Card, NumberField, ToggleRow, IconButton, DayChip } from "theme.slint";
 import { ScrollView, ComboBox } from "std-widgets.slint";
 
 // re-export so the Theme global is reachable from Rust (appearance settings)
@@ -227,6 +227,20 @@ export component SettingsWindow inherits Window {
     in-out property <bool> high-contrast;
     in-out property <bool> idle-enabled;
     in-out property <int> idle-sec;
+    in-out property <bool> wh-enabled;
+    in-out property <int> wh-start-h;
+    in-out property <int> wh-start-m;
+    in-out property <int> wh-end-h;
+    in-out property <int> wh-end-m;
+    in-out property <bool> wd-mon;
+    in-out property <bool> wd-tue;
+    in-out property <bool> wd-wed;
+    in-out property <bool> wd-thu;
+    in-out property <bool> wd-fri;
+    in-out property <bool> wd-sat;
+    in-out property <bool> wd-sun;
+    in-out property <bool> evening-enabled;
+    in-out property <int> evening-hour;
     in-out property <bool> long-enabled;
     in-out property <int> long-every;
     in-out property <int> long-min;
@@ -425,6 +439,71 @@ export component SettingsWindow inherits Window {
                         value <=> root.eyedrops-min;
                         minimum: 5;
                         maximum: 480;
+                    }
+
+                    ToggleRow {
+                        label: "Evening warm-screen nudge";
+                        checked <=> root.evening-enabled;
+                    }
+
+                    NumberField {
+                        label: "Evening hour";
+                        unit: "0–23";
+                        value <=> root.evening-hour;
+                        minimum: 0;
+                        maximum: 23;
+                    }
+                }
+
+                Card {
+                    title: "Work hours";
+                    ToggleRow {
+                        label: "Only remind during work hours";
+                        checked <=> root.wh-enabled;
+                    }
+
+                    NumberField {
+                        label: "Start hour";
+                        unit: "0–23";
+                        value <=> root.wh-start-h;
+                        minimum: 0;
+                        maximum: 23;
+                    }
+
+                    NumberField {
+                        label: "Start minute";
+                        unit: "";
+                        value <=> root.wh-start-m;
+                        minimum: 0;
+                        maximum: 59;
+                    }
+
+                    NumberField {
+                        label: "End hour";
+                        unit: "0–23";
+                        value <=> root.wh-end-h;
+                        minimum: 0;
+                        maximum: 23;
+                    }
+
+                    NumberField {
+                        label: "End minute";
+                        unit: "";
+                        value <=> root.wh-end-m;
+                        minimum: 0;
+                        maximum: 59;
+                    }
+
+                    HorizontalLayout {
+                        spacing: 6px;
+                        alignment: start;
+                        DayChip { label: "M"; on <=> root.wd-mon; }
+                        DayChip { label: "T"; on <=> root.wd-tue; }
+                        DayChip { label: "W"; on <=> root.wd-wed; }
+                        DayChip { label: "T"; on <=> root.wd-thu; }
+                        DayChip { label: "F"; on <=> root.wd-fri; }
+                        DayChip { label: "S"; on <=> root.wd-sat; }
+                        DayChip { label: "S"; on <=> root.wd-sun; }
                     }
                 }
 

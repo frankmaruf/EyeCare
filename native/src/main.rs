@@ -35,6 +35,29 @@ fn idle_seconds() -> u64 {
     }
 }
 
+/// True if now falls inside the configured work hours + weekdays.
+fn within_work_hours(s: &Settings) -> bool {
+    use chrono::{Datelike, Local, Timelike};
+    let now = Local::now();
+    let wd = now.weekday().num_days_from_monday() as usize; // Mon=0..Sun=6
+    if !s.work_days.get(wd).copied().unwrap_or(true) {
+        return false;
+    }
+    let parse = |t: &str| -> u32 {
+        let mut it = t.split(':');
+        let h: u32 = it.next().and_then(|x| x.trim().parse().ok()).unwrap_or(0);
+        let m: u32 = it.next().and_then(|x| x.trim().parse().ok()).unwrap_or(0);
+        h * 60 + m
+    };
+    let cur = now.hour() * 60 + now.minute();
+    let (start, end) = (parse(&s.work_start), parse(&s.work_end));
+    if start <= end {
+        cur >= start && cur < end
+    } else {
+        cur >= start || cur < end // overnight span
+    }
+}
+
 const TIPS: &[&str] = &[
     "20-20-20: every 20 min, look ~20 ft away for 20 sec.",
     "Blink fully and often — screens cut your blink rate in half.",
@@ -97,6 +120,14 @@ fn idx_to_shape(idx: i32) -> String {
     from_idx(&SHAPES, idx, "squircle")
 }
 
+/// Parse "HH:MM" into (hour, minute) ints.
+fn parse_hm(t: &str) -> (i32, i32) {
+    let mut it = t.split(':');
+    let h = it.next().and_then(|x| x.trim().parse().ok()).unwrap_or(9);
+    let m = it.next().and_then(|x| x.trim().parse().ok()).unwrap_or(0);
+    (h, m)
+}
+
 /// Parse "#rrggbb" into a Slint color (falls back to the default accent).
 fn parse_color(hex: &str) -> slint::Color {
     let n = u32::from_str_radix(hex.trim_start_matches('#'), 16).unwrap_or(0x4cc6c0);
@@ -114,6 +145,23 @@ fn populate_settings(w: &SettingsWindow, s: &Settings) {
     w.set_high_contrast(s.high_contrast);
     w.set_idle_enabled(s.idle_pause_enabled);
     w.set_idle_sec(s.idle_threshold_secs as i32);
+    w.set_wh_enabled(s.work_hours_enabled);
+    let (sh, sm) = parse_hm(&s.work_start);
+    let (eh, em) = parse_hm(&s.work_end);
+    w.set_wh_start_h(sh);
+    w.set_wh_start_m(sm);
+    w.set_wh_end_h(eh);
+    w.set_wh_end_m(em);
+    let day = |i: usize| s.work_days.get(i).copied().unwrap_or(true);
+    w.set_wd_mon(day(0));
+    w.set_wd_tue(day(1));
+    w.set_wd_wed(day(2));
+    w.set_wd_thu(day(3));
+    w.set_wd_fri(day(4));
+    w.set_wd_sat(day(5));
+    w.set_wd_sun(day(6));
+    w.set_evening_enabled(s.evening_nudge_enabled);
+    w.set_evening_hour(s.evening_hour as i32);
     w.set_snooze_min((s.snooze_secs / 60) as i32);
     w.set_max_postpones(s.max_postpones as i32);
     w.set_long_enabled(s.long_break_enabled);
@@ -147,6 +195,20 @@ fn read_settings(w: &SettingsWindow, base: &Settings) -> Settings {
         high_contrast: w.get_high_contrast(),
         idle_pause_enabled: w.get_idle_enabled(),
         idle_threshold_secs: w.get_idle_sec().max(10) as u64,
+        work_hours_enabled: w.get_wh_enabled(),
+        work_start: format!("{:02}:{:02}", w.get_wh_start_h().clamp(0, 23), w.get_wh_start_m().clamp(0, 59)),
+        work_end: format!("{:02}:{:02}", w.get_wh_end_h().clamp(0, 23), w.get_wh_end_m().clamp(0, 59)),
+        work_days: vec![
+            w.get_wd_mon(),
+            w.get_wd_tue(),
+            w.get_wd_wed(),
+            w.get_wd_thu(),
+            w.get_wd_fri(),
+            w.get_wd_sat(),
+            w.get_wd_sun(),
+        ],
+        evening_nudge_enabled: w.get_evening_enabled(),
+        evening_hour: w.get_evening_hour().clamp(0, 23) as u32,
         snooze_secs: w.get_snooze_min().max(1) as u64 * 60,
         max_postpones: w.get_max_postpones().max(0) as u32,
         long_break_enabled: w.get_long_enabled(),
@@ -173,7 +235,9 @@ fn read_settings(w: &SettingsWindow, base: &Settings) -> Settings {
 fn main() -> Result<(), slint::PlatformError> {
     let settings = Rc::new(RefCell::new(Settings::load()));
     let timer = Rc::new(RefCell::new(Timer::new(&settings.borrow())));
-    let idle_gated = Rc::new(Cell::new(false));
+    // 0 = running, 1 = idle-paused, 2 = outside work hours
+    let gate = Rc::new(Cell::new(0u8));
+    let evening_day = Rc::new(Cell::new(-1i64));
 
     let main_win = MainWindow::new()?;
     let break_win = BreakWindow::new()?;
@@ -206,21 +270,21 @@ fn main() -> Result<(), slint::PlatformError> {
         let widget_w = widget_win.as_weak();
         let timer = timer.clone();
         let settings = settings.clone();
-        let idle_gated = idle_gated.clone();
+        let gate = gate.clone();
         move || {
             let t = timer.borrow();
             let time = fmt(t.remaining);
             if let Some(w) = main_w.upgrade() {
                 w.set_progress(t.fraction());
                 w.set_time_text(time.clone());
-                let (tag, label) = if idle_gated.get() {
-                    ("idle", "paused — you're away")
-                } else {
-                    match (t.paused, t.phase) {
+                let (tag, label) = match gate.get() {
+                    1 => ("idle", "paused — you're away"),
+                    2 => ("paused", "outside work hours"),
+                    _ => match (t.paused, t.phase) {
                         (true, _) => ("paused", "paused"),
                         (_, Phase::Break) => ("break", "break time left"),
                         (_, Phase::Working) => ("working", "until next break"),
-                    }
+                    },
                 };
                 w.set_phase_tag(tag.into());
                 w.set_label_text(label.into());
@@ -300,15 +364,38 @@ fn main() -> Result<(), slint::PlatformError> {
         let settings = settings.clone();
         let render = render.clone();
         let sync_break = sync_break.clone();
-        let idle_gated = idle_gated.clone();
+        let gate = gate.clone();
+        let evening_day = evening_day.clone();
         ticker.start(slint::TimerMode::Repeated, Duration::from_secs(1), move || {
-            // Idle pause: freeze the countdown while the user is away.
-            let gated = {
+            // Evening warm-screen nudge: once per day at the chosen hour.
+            {
                 let s = settings.borrow();
-                s.idle_pause_enabled && idle_seconds() >= s.idle_threshold_secs
+                if s.evening_nudge_enabled {
+                    use chrono::{Datelike, Local, Timelike};
+                    let now = Local::now();
+                    let ord = now.num_days_from_ce() as i64;
+                    if now.hour() == s.evening_hour && evening_day.get() != ord {
+                        evening_day.set(ord);
+                        notify(
+                            "Evening eyes",
+                            "Warm your screen (night mode) and avoid using it in the dark.",
+                        );
+                    }
+                }
+            }
+            // Gate the countdown: idle, or outside work hours.
+            let g = {
+                let s = settings.borrow();
+                if s.idle_pause_enabled && idle_seconds() >= s.idle_threshold_secs {
+                    1u8
+                } else if s.work_hours_enabled && !within_work_hours(&s) {
+                    2
+                } else {
+                    0
+                }
             };
-            idle_gated.set(gated);
-            if gated {
+            gate.set(g);
+            if g != 0 {
                 render();
                 return;
             }

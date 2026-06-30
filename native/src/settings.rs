@@ -34,6 +34,12 @@ pub struct Settings {
     // stay out of the way
     pub idle_pause_enabled: bool,
     pub idle_threshold_secs: u64,
+    pub work_hours_enabled: bool,
+    pub work_start: String, // "HH:MM"
+    pub work_end: String,
+    pub work_days: Vec<bool>, // Mon..Sun
+    pub evening_nudge_enabled: bool,
+    pub evening_hour: u32,
 
     // appearance
     pub accent: String, // hex "#rrggbb"
@@ -73,6 +79,12 @@ impl Default for Settings {
             eyedrops_interval_secs: 2 * 60 * 60,
             idle_pause_enabled: true,
             idle_threshold_secs: 120,
+            work_hours_enabled: false,
+            work_start: "09:00".into(),
+            work_end: "17:00".into(),
+            work_days: vec![true; 7],
+            evening_nudge_enabled: false,
+            evening_hour: 20,
             accent: "#4cc6c0".into(),
             reduce_motion: false,
             high_contrast: false,
