@@ -3,6 +3,27 @@
 version = 4
 
 [[package]]
+name = "CoreFoundation-sys"
+version = "0.1.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d0e9889e6db118d49d88d84728d0e964d973a5680befb5f85f55141beea5c20b"
+dependencies = [
+ "libc",
+ "mach 0.1.2",
+]
+
+[[package]]
+name = "IOKit-sys"
+version = "0.1.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "99696c398cbaf669d2368076bdb3d627fb0ce51a26899d7c61228c5c0af3bf4a"
+dependencies = [
+ "CoreFoundation-sys",
+ "libc",
+ "mach 0.1.2",
+]
+
+[[package]]
 name = "ab_glyph"
 version = "0.2.32"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -851,6 +872,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "460fbee9c2c2f33933d720630a6a0bac33ba7053db5344fac858d4b8952d77d5"
 
 [[package]]
+name = "cstr"
+version = "0.2.12"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "68523903c8ae5aacfa32a0d9ae60cadeb764e1da14ee0d26b1f3089f13a54636"
+dependencies = [
+ "proc-macro2",
+ "quote",
+]
+
+[[package]]
 name = "ctor"
 version = "0.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1157,6 +1188,7 @@ dependencies = [
  "serde_json",
  "slint",
  "slint-build",
+ "user-idle",
 ]
 
 [[package]]
@@ -2554,6 +2586,24 @@ dependencies = [
  "objc2-foundation 0.3.2",
  "time",
  "uuid",
+]
+
+[[package]]
+name = "mach"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2fd13ee2dd61cc82833ba05ade5a30bb3d63f7ced605ef827063c63078302de9"
+dependencies = [
+ "libc",
+]
+
+[[package]]
+name = "mach"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b823e83b2affd8f40a9ee8c29dbc56404c1e34cd2710921f2801e2cf29527afa"
+dependencies = [
+ "libc",
 ]
 
 [[package]]
@@ -4832,6 +4882,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "user-idle"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "433621584802937d26ab1b490236d802a9bc6d7176fe913cc12c2e51a790d5a2"
+dependencies = [
+ "CoreFoundation-sys",
+ "IOKit-sys",
+ "cstr",
+ "mach 0.3.2",
+ "windows-sys 0.48.0",
+ "x11",
+]
+
+[[package]]
 name = "usvg"
 version = "0.47.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5633,6 +5697,16 @@ name = "writeable"
 version = "0.6.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1ffae5123b2d3fc086436f8834ae3ab053a283cfac8fe0a0b8eaae044768a4c4"
+
+[[package]]
+name = "x11"
+version = "2.21.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "502da5464ccd04011667b11c435cb992822c2c0dbde1770c988480d312a0db2e"
+dependencies = [
+ "libc",
+ "pkg-config",
+]
 
 [[package]]
 name = "x11-clipboard"

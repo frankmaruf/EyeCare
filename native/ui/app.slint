@@ -225,6 +225,8 @@ export component SettingsWindow inherits Window {
     in-out property <int> accent-idx;
     in-out property <bool> reduce-motion;
     in-out property <bool> high-contrast;
+    in-out property <bool> idle-enabled;
+    in-out property <int> idle-sec;
     in-out property <bool> long-enabled;
     in-out property <int> long-every;
     in-out property <int> long-min;
@@ -468,6 +470,22 @@ export component SettingsWindow inherits Window {
                         value <=> root.widget-h;
                         minimum: 120;
                         maximum: 480;
+                    }
+                }
+
+                Card {
+                    title: "Stay out of the way";
+                    ToggleRow {
+                        label: "Pause when I'm away (idle)";
+                        checked <=> root.idle-enabled;
+                    }
+
+                    NumberField {
+                        label: "Idle threshold";
+                        unit: "sec";
+                        value <=> root.idle-sec;
+                        minimum: 10;
+                        maximum: 1800;
                     }
                 }
 

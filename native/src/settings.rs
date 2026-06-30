@@ -31,6 +31,10 @@ pub struct Settings {
     pub eyedrops_enabled: bool,
     pub eyedrops_interval_secs: u64,
 
+    // stay out of the way
+    pub idle_pause_enabled: bool,
+    pub idle_threshold_secs: u64,
+
     // appearance
     pub accent: String, // hex "#rrggbb"
     pub reduce_motion: bool,
@@ -67,6 +71,8 @@ impl Default for Settings {
             posture_interval_secs: 30 * 60,
             eyedrops_enabled: false,
             eyedrops_interval_secs: 2 * 60 * 60,
+            idle_pause_enabled: true,
+            idle_threshold_secs: 120,
             accent: "#4cc6c0".into(),
             reduce_motion: false,
             high_contrast: false,

@@ -7,8 +7,9 @@
 mod settings;
 mod timer;
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use i_slint_backend_winit::WinitWindowAccessor;
@@ -16,6 +17,23 @@ use settings::Settings;
 use timer::{Event, Phase, Timer};
 
 slint::include_modules!();
+
+/// Cache "idle detection unavailable" (e.g. no X screensaver extension) so we
+/// stop probing and just never gate on idle.
+static IDLE_UNAVAIL: AtomicBool = AtomicBool::new(false);
+
+fn idle_seconds() -> u64 {
+    if IDLE_UNAVAIL.load(Ordering::Relaxed) {
+        return 0;
+    }
+    match user_idle::UserIdle::get_time() {
+        Ok(t) => t.as_seconds(),
+        Err(_) => {
+            IDLE_UNAVAIL.store(true, Ordering::Relaxed);
+            0
+        }
+    }
+}
 
 const TIPS: &[&str] = &[
     "20-20-20: every 20 min, look ~20 ft away for 20 sec.",
@@ -94,6 +112,8 @@ fn populate_settings(w: &SettingsWindow, s: &Settings) {
     w.set_accent_idx(to_idx(&ACCENTS, &s.accent, 0));
     w.set_reduce_motion(s.reduce_motion);
     w.set_high_contrast(s.high_contrast);
+    w.set_idle_enabled(s.idle_pause_enabled);
+    w.set_idle_sec(s.idle_threshold_secs as i32);
     w.set_snooze_min((s.snooze_secs / 60) as i32);
     w.set_max_postpones(s.max_postpones as i32);
     w.set_long_enabled(s.long_break_enabled);
@@ -125,6 +145,8 @@ fn read_settings(w: &SettingsWindow, base: &Settings) -> Settings {
         accent: from_idx(&ACCENTS, w.get_accent_idx(), "#4cc6c0"),
         reduce_motion: w.get_reduce_motion(),
         high_contrast: w.get_high_contrast(),
+        idle_pause_enabled: w.get_idle_enabled(),
+        idle_threshold_secs: w.get_idle_sec().max(10) as u64,
         snooze_secs: w.get_snooze_min().max(1) as u64 * 60,
         max_postpones: w.get_max_postpones().max(0) as u32,
         long_break_enabled: w.get_long_enabled(),
@@ -151,6 +173,7 @@ fn read_settings(w: &SettingsWindow, base: &Settings) -> Settings {
 fn main() -> Result<(), slint::PlatformError> {
     let settings = Rc::new(RefCell::new(Settings::load()));
     let timer = Rc::new(RefCell::new(Timer::new(&settings.borrow())));
+    let idle_gated = Rc::new(Cell::new(false));
 
     let main_win = MainWindow::new()?;
     let break_win = BreakWindow::new()?;
@@ -183,16 +206,21 @@ fn main() -> Result<(), slint::PlatformError> {
         let widget_w = widget_win.as_weak();
         let timer = timer.clone();
         let settings = settings.clone();
+        let idle_gated = idle_gated.clone();
         move || {
             let t = timer.borrow();
             let time = fmt(t.remaining);
             if let Some(w) = main_w.upgrade() {
                 w.set_progress(t.fraction());
                 w.set_time_text(time.clone());
-                let (tag, label) = match (t.paused, t.phase) {
-                    (true, _) => ("paused", "paused"),
-                    (_, Phase::Break) => ("break", "break time left"),
-                    (_, Phase::Working) => ("working", "until next break"),
+                let (tag, label) = if idle_gated.get() {
+                    ("idle", "paused — you're away")
+                } else {
+                    match (t.paused, t.phase) {
+                        (true, _) => ("paused", "paused"),
+                        (_, Phase::Break) => ("break", "break time left"),
+                        (_, Phase::Working) => ("working", "until next break"),
+                    }
                 };
                 w.set_phase_tag(tag.into());
                 w.set_label_text(label.into());
@@ -272,7 +300,18 @@ fn main() -> Result<(), slint::PlatformError> {
         let settings = settings.clone();
         let render = render.clone();
         let sync_break = sync_break.clone();
+        let idle_gated = idle_gated.clone();
         ticker.start(slint::TimerMode::Repeated, Duration::from_secs(1), move || {
+            // Idle pause: freeze the countdown while the user is away.
+            let gated = {
+                let s = settings.borrow();
+                s.idle_pause_enabled && idle_seconds() >= s.idle_threshold_secs
+            };
+            idle_gated.set(gated);
+            if gated {
+                render();
+                return;
+            }
             let res = timer.borrow_mut().tick(&settings.borrow());
             match res.event {
                 Event::Prewarn => notify("Eye break soon", "A break is coming up — finish your thought."),
