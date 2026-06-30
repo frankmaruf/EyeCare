@@ -1157,15 +1157,19 @@ fn main() -> Result<(), slint::PlatformError> {
             move || {
                 // Minimize → hide to the tray (not the taskbar): when the
                 // dashboard gets minimized, un-minimize it and hide so it leaves
-                // the taskbar entirely. Re-open via the tray / widget.
+                // the taskbar entirely. Re-open via the tray / widget. Only act
+                // while it's actually shown — touching a just-closed (hidden)
+                // window re-maps it for a frame and makes it flicker/jump.
                 if let Some(m) = main_w.upgrade() {
-                    let min = m
-                        .window()
-                        .with_winit_window(|w| w.is_minimized().unwrap_or(false))
-                        .unwrap_or(false);
-                    if min {
-                        m.window().with_winit_window(|w| w.set_minimized(false));
-                        let _ = m.hide();
+                    if m.window().is_visible() {
+                        let min = m
+                            .window()
+                            .with_winit_window(|w| w.is_minimized().unwrap_or(false))
+                            .unwrap_or(false);
+                        if min {
+                            m.window().with_winit_window(|w| w.set_minimized(false));
+                            let _ = m.hide();
+                        }
                     }
                 }
                 // live countdown in the tray tooltip (§4.11)
