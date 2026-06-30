@@ -819,7 +819,7 @@ fn main() -> Result<(), slint::PlatformError> {
     {
         let widget_w = widget_win.as_weak();
         let settings = settings.clone();
-        geom_timer.start(slint::TimerMode::Repeated, Duration::from_secs(2), move || {
+        geom_timer.start(slint::TimerMode::Repeated, Duration::from_millis(800), move || {
             let Some(w) = widget_w.upgrade() else { return };
             let win = w.window();
             let scale = win.scale_factor().max(0.1);
@@ -836,13 +836,23 @@ fn main() -> Result<(), slint::PlatformError> {
             if lw < 1 || lh < 1 {
                 return;
             }
-            let mut s = settings.borrow_mut();
-            if s.widget_width != lw || s.widget_height != lh || s.widget_x != Some(lx) || s.widget_y != Some(ly) {
-                s.widget_width = lw.clamp(settings::WIDGET_MIN, settings::WIDGET_MAX);
-                s.widget_height = lh.clamp(settings::WIDGET_MIN, settings::WIDGET_MAX);
-                s.widget_x = Some(lx);
-                s.widget_y = Some(ly);
-                s.save();
+            // Keep the widget square so the round dial always fills it — resizing
+            // either edge scales the whole thing uniformly.
+            let sq = lw.min(lh).clamp(settings::WIDGET_MIN, settings::WIDGET_MAX);
+            let changed = {
+                let mut s = settings.borrow_mut();
+                let c = s.widget_width != sq || s.widget_x != Some(lx) || s.widget_y != Some(ly);
+                if c {
+                    s.widget_width = sq;
+                    s.widget_height = sq;
+                    s.widget_x = Some(lx);
+                    s.widget_y = Some(ly);
+                    s.save();
+                }
+                c
+            };
+            if changed && (lw != sq || lh != sq) {
+                win.set_size(slint::LogicalSize::new(sq as f32, sq as f32));
             }
         });
     }
