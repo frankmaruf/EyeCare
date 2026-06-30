@@ -81,17 +81,24 @@ Grab the `.msi` / `.exe` (Windows) or `.dmg` (macOS) from [Releases](https://git
 
 > Builds are produced on each target OS — Tauri does not cross-compile easily.
 
-### Native low-RAM build (Linux)
-For ~44 MB RAM instead of ~600 MB, grab the **native** binary from the latest
-[`native-v*` prerelease](https://github.com/frankmaruf/EyeCare/releases):
+### Native low-RAM build (Linux · macOS · Windows)
+For ~44 MB RAM instead of ~600 MB, grab the **native** binary for your OS from
+the latest [`native-v*` prerelease](https://github.com/frankmaruf/EyeCare/releases):
+
+| OS | Asset |
+|----|-------|
+| Linux x86_64 | `eyecare-native-linux-x86_64` |
+| macOS (Apple Silicon) | `eyecare-native-macos-aarch64` |
+| Windows x86_64 | `eyecare-native-windows-x86_64.exe` |
+
 ```bash
-chmod +x eyecare-native-linux-x86_64
-./eyecare-native-linux-x86_64
+# Linux / macOS
+chmod +x eyecare-native-* && ./eyecare-native-*
 ```
-Same 20-20-20 timer, floating widget, settings, eye-health nudges, tray, global
-shortcuts and in-app updater. Built with **Rust + [Slint](https://slint.dev)**
-(no webview). Forces an X11/XWayland session for reliable always-on-top,
-drag/resize and tray behaviour.
+Same 20-20-20 timer, floating widget, settings, eye-health nudges, tray (Linux),
+global shortcuts and in-app updater. Built with **Rust + [Slint](https://slint.dev)**
+(no webview). On Linux it forces an X11/XWayland session for reliable
+always-on-top, drag/resize and tray behaviour.
 
 ---
 
