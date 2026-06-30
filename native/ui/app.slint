@@ -893,16 +893,22 @@ export component WidgetWindow inherits Window {
         hover := TouchArea {
             mouse-cursor: grab;
             pointer-event(e) => {
+                if (e.kind == PointerEventKind.move) {
+                    root.controls-visible = true;
+                    hide-timer.restart();
+                }
                 if (e.kind == PointerEventKind.down && e.button == PointerEventButton.left) {
                     root.start-drag();
                 }
             }
         }
 
-        // auto-hide the controls 2.5s after the pointer leaves
+        // auto-hide the controls ~1.8s after they appear. Gated on
+        // controls-visible only (NOT hovering) because a WM drag/resize grab can
+        // leave Slint's has-hover stuck true, which would keep them up forever.
         hide-timer := Timer {
-            interval: 1200ms;
-            running: root.controls-visible && !root.hovering;
+            interval: 1800ms;
+            running: root.controls-visible;
             triggered => {
                 root.controls-visible = false;
             }
