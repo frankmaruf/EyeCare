@@ -543,7 +543,6 @@ fn main() -> Result<(), slint::PlatformError> {
             w.set_stat_total(total as i32);
             w.set_app_version(updater::current_version().into());
             w.set_show_settings(true);
-            w.window().set_size(slint::LogicalSize::new(580.0, 680.0));
         });
     }
     {
@@ -574,7 +573,6 @@ fn main() -> Result<(), slint::PlatformError> {
             w.set_long_hint(long_hint(&s).into());
             drop(s);
             w.set_show_settings(false);
-            w.window().set_size(slint::LogicalSize::new(360.0, 440.0));
             render();
         });
     }
@@ -583,7 +581,6 @@ fn main() -> Result<(), slint::PlatformError> {
         main_win.on_back(move || {
             if let Some(w) = mw.upgrade() {
                 w.set_show_settings(false);
-                w.window().set_size(slint::LogicalSize::new(360.0, 440.0));
             }
         });
     }
