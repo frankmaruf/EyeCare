@@ -96,6 +96,8 @@ fn notify(title: &str, body: &str) {
         .summary(title)
         .body(body)
         .appname("EyeCare")
+        // resolves the installed hicolor icon so the notification shows the logo
+        .icon("us.frankmaruf.eyecare-native")
         .show();
 }
 
@@ -407,6 +409,24 @@ unsafe extern "C" fn xlib_error_noop(
 }
 
 fn main() -> Result<(), slint::PlatformError> {
+    // Cap glibc malloc to 2 arenas. Default is 8×CPU arenas, each reserving 64 MB
+    // of VIRTUAL address space (VSZ ~500 MB) — harmless (not real RAM) but it
+    // looks alarming. Capping it drops VSZ to ~180 MB with no change to real RAM.
+    // Must be set before glibc's first malloc, so re-exec once with it in the env.
+    #[cfg(target_os = "linux")]
+    {
+        use std::os::unix::process::CommandExt;
+        if std::env::var_os("MALLOC_ARENA_MAX").is_none() {
+            if let Ok(exe) = std::env::current_exe() {
+                let err = std::process::Command::new(exe)
+                    .args(std::env::args_os().skip(1))
+                    .env("MALLOC_ARENA_MAX", "2")
+                    .exec(); // replaces this process; only returns on failure
+                eprintln!("[eyecare] re-exec for MALLOC_ARENA_MAX failed: {err}");
+            }
+        }
+    }
+
     #[cfg(target_os = "linux")]
     unsafe {
         x11::xlib::XSetErrorHandler(Some(xlib_error_noop));
