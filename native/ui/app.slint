@@ -1,0 +1,496 @@
+import { Theme, Ring, PillButton, Card, NumberField, ToggleRow, IconButton } from "theme.slint";
+import { ScrollView } from "std-widgets.slint";
+
+// Dashboard — mirrors showDashboard() in eyecare/src/main.ts.
+export component MainWindow inherits Window {
+    title: "EyeCare";
+    width: 360px;
+    height: 440px;
+    background: Theme.bg;
+
+    in property <float> progress: 1.0;
+    in property <string> time-text: "20:00";
+    in property <string> label-text: "until next break";
+    in property <string> phase-tag: "working";
+    in property <string> pause-text: "Pause";
+    callback pause();
+    callback take-break();
+    callback skip();
+    callback open-settings();
+
+    VerticalLayout {
+        padding: 24px;
+        spacing: 18px;
+
+        // header: title + phase tag + settings
+        HorizontalLayout {
+            spacing: 10px;
+            Text {
+                text: "EyeCare";
+                color: Theme.text;
+                font-size: 24px;
+                font-weight: 700;
+                vertical-alignment: center;
+            }
+
+            Rectangle {
+                background: #1d2c47;
+                border-radius: 999px;
+                border-width: 1px;
+                border-color: Theme.border;
+                horizontal-stretch: 0;
+                HorizontalLayout {
+                    padding-left: 12px;
+                    padding-right: 12px;
+                    padding-top: 4px;
+                    padding-bottom: 4px;
+                    Text {
+                        text: root.phase-tag;
+                        color: Theme.accent;
+                        font-size: 12px;
+                        font-weight: 600;
+                    }
+                }
+            }
+
+            Rectangle {
+                horizontal-stretch: 1;
+            }
+
+            gear := Rectangle {
+                width: 34px;
+                height: 34px;
+                border-radius: 8px;
+                border-width: 1px;
+                border-color: Theme.border;
+                background: gear-touch.has-hover ? #ffffff10 : transparent;
+                Text {
+                    text: "⚙";
+                    color: Theme.muted;
+                    font-size: 18px;
+                }
+
+                gear-touch := TouchArea {
+                    clicked => {
+                        root.open-settings();
+                    }
+                }
+            }
+        }
+
+        // ring fills the free space, centred
+        Rectangle {
+            vertical-stretch: 1;
+            Ring {
+                progress: root.progress;
+                time-text: root.time-text;
+                label-text: root.label-text;
+            }
+        }
+
+        // controls
+        HorizontalLayout {
+            alignment: center;
+            spacing: 10px;
+            PillButton {
+                text: root.pause-text;
+                clicked => {
+                    root.pause();
+                }
+            }
+
+            PillButton {
+                text: "Take break now";
+                ghost: true;
+                clicked => {
+                    root.take-break();
+                }
+            }
+
+            PillButton {
+                text: "Skip";
+                ghost: true;
+                clicked => {
+                    root.skip();
+                }
+            }
+        }
+    }
+}
+
+// Break overlay — mirrors renderBreak() in eyecare/src/main.ts.
+export component BreakWindow inherits Window {
+    title: "EyeCare — break time";
+    width: 580px;
+    height: 480px;
+    background: Theme.bg;
+
+    in property <string> time-text: "00:20";
+    in property <string> title-text: "Look ~20 feet away";
+    in property <string> sub-text: "Relax your eyes — let your focus drift to the distance.";
+    in property <string> tip-text;
+    in property <bool> can-postpone: true;
+    callback postpone();
+    callback skip();
+
+    VerticalLayout {
+        padding: 24px;
+        spacing: 8px;
+        alignment: center;
+
+        Text {
+            text: "EYECARE";
+            color: Theme.accent;
+            font-size: 13px;
+            letter-spacing: 3px;
+            font-weight: 600;
+            horizontal-alignment: center;
+        }
+
+        Text {
+            text: root.title-text;
+            color: Theme.text;
+            font-size: 36px;
+            font-weight: 600;
+            horizontal-alignment: center;
+            wrap: word-wrap;
+        }
+
+        Text {
+            text: root.sub-text;
+            color: Theme.muted;
+            font-size: 16px;
+            horizontal-alignment: center;
+            wrap: word-wrap;
+        }
+
+        Text {
+            text: root.time-text;
+            color: Theme.accent;
+            font-size: 64px;
+            font-weight: 700;
+            horizontal-alignment: center;
+        }
+
+        HorizontalLayout {
+            alignment: center;
+            spacing: 12px;
+            PillButton {
+                text: "Postpone";
+                ghost: true;
+                clicked => {
+                    root.postpone();
+                }
+            }
+
+            PillButton {
+                text: "Skip break";
+                clicked => {
+                    root.skip();
+                }
+            }
+        }
+
+        Text {
+            text: root.tip-text;
+            color: Theme.muted;
+            font-size: 14px;
+            horizontal-alignment: center;
+            wrap: word-wrap;
+        }
+    }
+}
+
+// Settings — mirrors showSettings() in eyecare/src/main.ts (core cards now;
+// nudges / theme / stats / import-export land in later increments).
+export component SettingsWindow inherits Window {
+    title: "EyeCare — Settings";
+    width: 440px;
+    height: 600px;
+    background: Theme.bg;
+
+    in-out property <int> work-min;
+    in-out property <int> break-sec;
+    in-out property <int> prewarn-sec;
+    in-out property <int> snooze-min;
+    in-out property <int> max-postpones;
+    in-out property <bool> long-enabled;
+    in-out property <int> long-every;
+    in-out property <int> long-min;
+    in-out property <bool> tips-enabled;
+    in property <string> long-hint;
+    callback save();
+    callback back();
+
+    VerticalLayout {
+        padding: 20px;
+        spacing: 14px;
+
+        HorizontalLayout {
+            spacing: 10px;
+            Text {
+                text: "Settings";
+                color: Theme.text;
+                font-size: 20px;
+                font-weight: 700;
+                vertical-alignment: center;
+                horizontal-stretch: 1;
+            }
+        }
+
+        ScrollView {
+            vertical-stretch: 1;
+            VerticalLayout {
+                spacing: 14px;
+
+                Card {
+                    title: "Timing";
+                    NumberField {
+                        label: "Work interval";
+                        unit: "min";
+                        value <=> root.work-min;
+                        minimum: 1;
+                        maximum: 120;
+                    }
+
+                    NumberField {
+                        label: "Break length";
+                        unit: "sec";
+                        value <=> root.break-sec;
+                        minimum: 5;
+                        maximum: 600;
+                    }
+
+                    NumberField {
+                        label: "Pre-break warning";
+                        unit: "sec, 0=off";
+                        value <=> root.prewarn-sec;
+                        minimum: 0;
+                        maximum: 120;
+                    }
+                }
+
+                Card {
+                    title: "Long breaks";
+                    ToggleRow {
+                        label: "Enable long breaks";
+                        checked <=> root.long-enabled;
+                    }
+
+                    NumberField {
+                        label: "Every Nth break";
+                        unit: "breaks";
+                        value <=> root.long-every;
+                        minimum: 1;
+                        maximum: 10;
+                    }
+
+                    NumberField {
+                        label: "Long break length";
+                        unit: "min";
+                        value <=> root.long-min;
+                        minimum: 1;
+                        maximum: 60;
+                    }
+
+                    Text {
+                        text: root.long-hint;
+                        color: Theme.muted;
+                        font-size: 12px;
+                        wrap: word-wrap;
+                    }
+                }
+
+                Card {
+                    title: "Reminders";
+                    NumberField {
+                        label: "Snooze / postpone";
+                        unit: "min";
+                        value <=> root.snooze-min;
+                        minimum: 1;
+                        maximum: 60;
+                    }
+
+                    NumberField {
+                        label: "Max postpones";
+                        unit: "0=∞";
+                        value <=> root.max-postpones;
+                        minimum: 0;
+                        maximum: 10;
+                    }
+
+                    ToggleRow {
+                        label: "Show eye-care tips on the break screen";
+                        checked <=> root.tips-enabled;
+                    }
+                }
+            }
+        }
+
+        HorizontalLayout {
+            spacing: 10px;
+            alignment: start;
+            PillButton {
+                text: "Save settings";
+                clicked => {
+                    root.save();
+                }
+            }
+
+            PillButton {
+                text: "Back";
+                ghost: true;
+                clicked => {
+                    root.back();
+                }
+            }
+        }
+    }
+}
+
+// Floating widget — mirrors renderWidget(): small always-on-top countdown ring.
+export component WidgetWindow inherits Window {
+    title: "EyeCare widget";
+    width: 132px;
+    height: 132px;
+    background: transparent;
+    no-frame: true;
+
+    in property <float> progress: 1.0;
+    in property <string> time-text: "20:00";
+    in property <string> pause-icon: "⏸";
+    callback restore();
+    callback pause();
+    callback take-break();
+    callback skip();
+
+    card := Rectangle {
+        width: 100%;
+        height: 100%;
+        border-radius: 28px;
+        background: #0e1726f2;
+        border-width: 1px;
+        border-color: #2b3a57;
+
+        hover := TouchArea { }
+
+        // ---- ring with tick marks ----
+        ringbox := Rectangle {
+            width: 104px;
+            height: 104px;
+            y: 8px;
+            x: (parent.width - self.width) / 2;
+
+            // track
+            Rectangle {
+                width: 100%;
+                height: 100%;
+                border-radius: self.width / 2;
+                border-width: 9px;
+                border-color: Theme.ring-track;
+            }
+
+            // 12 tick dots around the dial (placed by angle; no rotation API)
+            for i in 12: Rectangle {
+                width: 3px;
+                height: 3px;
+                border-radius: 1.5px;
+                background: #3a4a66;
+                x: 52px + 34px * Math.sin(i * 30deg) - 1.5px;
+                y: 52px - 34px * Math.cos(i * 30deg) - 1.5px;
+            }
+
+            // progress arc
+            Path {
+                width: 100%;
+                height: 100%;
+                viewbox-width: 100;
+                viewbox-height: 100;
+                stroke: Theme.accent;
+                stroke-width: 9px;
+                MoveTo {
+                    x: 50;
+                    y: 6;
+                }
+                ArcTo {
+                    radius-x: 44;
+                    radius-y: 44;
+                    x: 50 + 44 * Math.sin(root.progress * 360deg);
+                    y: 50 - 44 * Math.cos(root.progress * 360deg);
+                    large-arc: root.progress > 0.5;
+                    sweep: true;
+                }
+            }
+
+            Text {
+                text: root.time-text;
+                color: Theme.text;
+                font-size: 27px;
+                font-weight: 700;
+                width: 100%;
+                height: 100%;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+        }
+
+        // ---- expand-to-restore (top-right, on hover) ----
+        restore-btn := Rectangle {
+            x: parent.width - 28px;
+            y: 7px;
+            width: 21px;
+            height: 21px;
+            border-radius: 7px;
+            background: rt.has-hover ? #2a3a59 : #1c2a45;
+            opacity: hover.has-hover ? 1.0 : 0.0;
+            animate opacity { duration: 120ms; }
+            Text {
+                text: "⤢";
+                color: Theme.muted;
+                font-size: 12px;
+                width: 100%;
+                height: 100%;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+
+            rt := TouchArea {
+                clicked => {
+                    root.restore();
+                }
+            }
+        }
+
+        // ---- hover action bar (bottom) ----
+        HorizontalLayout {
+            y: parent.height - 34px;
+            height: 26px;
+            width: 100%;
+            alignment: center;
+            spacing: 8px;
+            opacity: hover.has-hover ? 1.0 : 0.0;
+            animate opacity { duration: 120ms; }
+            IconButton {
+                icon: root.pause-icon;
+                clicked => {
+                    root.pause();
+                }
+            }
+
+            IconButton {
+                icon: "◉";
+                primary: true;
+                clicked => {
+                    root.take-break();
+                }
+            }
+
+            IconButton {
+                icon: "⏭";
+                clicked => {
+                    root.skip();
+                }
+            }
+        }
+    }
+}

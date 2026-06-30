@@ -1,0 +1,215 @@
+// Shared theme + reusable widgets, mirroring eyecare/src/styles.css so every
+// window stays visually identical and we don't repeat colours/shapes.
+
+import { SpinBox, CheckBox } from "std-widgets.slint";
+
+export global Theme {
+    out property <color> bg: #0e1726;
+    out property <color> panel: #16223a;
+    out property <color> border: #25324a;
+    out property <color> text: #e8eef7;
+    out property <color> muted: #93a3bd;
+    out property <color> accent: #4cc6c0;
+    out property <color> ring-track: #1f2c45;
+    out property <color> danger: #e2725b;
+    out property <length> radius: 10px;
+}
+
+// Pill button matching .btn / .btn.ghost. `ghost` = outlined, `accent` = filled.
+export component PillButton inherits Rectangle {
+    in property <string> text;
+    in property <bool> ghost: false;
+    callback clicked();
+
+    border-radius: Theme.radius;
+    border-width: 1px;
+    border-color: root.ghost ? Theme.border : Theme.accent;
+    background: root.ghost
+        ? (touch.has-hover ? #ffffff10 : transparent)
+        : (touch.pressed ? Theme.accent.darker(15%) : Theme.accent);
+    height: 38px;
+    horizontal-stretch: 0;
+
+    HorizontalLayout {
+        padding-left: 18px;
+        padding-right: 18px;
+        Text {
+            text: root.text;
+            vertical-alignment: center;
+            horizontal-alignment: center;
+            font-size: 15px;
+            font-weight: 600;
+            color: root.ghost ? Theme.text : #0e1726;
+        }
+    }
+
+    touch := TouchArea {
+        clicked => {
+            root.clicked();
+        }
+    }
+}
+
+// Countdown ring used by the dashboard (and, later, the widget). `progress` is
+// the remaining fraction (1 = full .. 0 = empty); drawn from the top, clockwise.
+export component Ring inherits Rectangle {
+    in property <float> progress: 1.0;
+    in property <string> time-text: "20:00";
+    in property <string> label-text: "until next break";
+    in property <length> diameter: 220px;
+
+    width: root.diameter;
+    height: root.diameter;
+
+    // track
+    Rectangle {
+        width: 100%;
+        height: 100%;
+        border-radius: self.width / 2;
+        border-width: 16px;
+        border-color: Theme.ring-track;
+    }
+
+    // progress arc
+    Path {
+        width: 100%;
+        height: 100%;
+        viewbox-width: 100;
+        viewbox-height: 100;
+        stroke: Theme.accent;
+        stroke-width: 16px;
+        MoveTo {
+            x: 50;
+            y: 6;
+        }
+        ArcTo {
+            radius-x: 44;
+            radius-y: 44;
+            x: 50 + 44 * Math.sin(root.progress * 360deg);
+            y: 50 - 44 * Math.cos(root.progress * 360deg);
+            large-arc: root.progress > 0.5;
+            sweep: true;
+        }
+    }
+
+    VerticalLayout {
+        alignment: center;
+        spacing: 2px;
+        Text {
+            text: root.time-text;
+            color: Theme.text;
+            font-size: 45px;
+            font-weight: 600;
+            horizontal-alignment: center;
+        }
+
+        Text {
+            text: root.label-text;
+            color: Theme.muted;
+            font-size: 14px;
+            horizontal-alignment: center;
+        }
+    }
+}
+
+// ---- reusable form pieces (mirror .card / .grid label / .toggle-row) ----
+
+export component Card inherits Rectangle {
+    in property <string> title;
+    background: Theme.panel;
+    border-radius: 16px;
+    border-width: 1px;
+    border-color: Theme.border;
+    VerticalLayout {
+        padding: 16px;
+        spacing: 10px;
+        Text {
+            text: root.title;
+            color: Theme.text;
+            font-size: 16px;
+            font-weight: 700;
+        }
+
+        @children
+    }
+}
+
+export component NumberField {
+    in property <string> label;
+    in property <string> unit;
+    in-out property <int> value;
+    in property <int> minimum: 0;
+    in property <int> maximum: 100000;
+    height: 32px;
+    HorizontalLayout {
+        spacing: 8px;
+        Text {
+            text: root.label;
+            color: Theme.text;
+            font-size: 14px;
+            vertical-alignment: center;
+            horizontal-stretch: 1;
+        }
+
+        Text {
+            text: root.unit;
+            color: Theme.muted;
+            font-size: 13px;
+            vertical-alignment: center;
+        }
+
+        SpinBox {
+            value <=> root.value;
+            minimum: root.minimum;
+            maximum: root.maximum;
+            width: 110px;
+        }
+    }
+}
+
+export component ToggleRow {
+    in property <string> label;
+    in-out property <bool> checked;
+    height: 28px;
+    HorizontalLayout {
+        Text {
+            text: root.label;
+            color: Theme.text;
+            font-size: 14px;
+            vertical-alignment: center;
+            horizontal-stretch: 1;
+        }
+
+        CheckBox {
+            checked <=> root.checked;
+        }
+    }
+}
+
+// Small round icon button for the floating widget's hover actions.
+export component IconButton inherits Rectangle {
+    in property <string> icon;
+    in property <bool> primary: false;
+    callback clicked();
+    width: 26px;
+    height: 26px;
+    border-radius: 13px;
+    background: root.primary
+        ? (t.pressed ? Theme.accent.darker(15%) : Theme.accent)
+        : (t.has-hover ? #2a3a59 : #1c2a45);
+    Text {
+        text: root.icon;
+        color: root.primary ? #0e1726 : Theme.text;
+        font-size: 12px;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+        width: 100%;
+        height: 100%;
+    }
+
+    t := TouchArea {
+        clicked => {
+            root.clicked();
+        }
+    }
+}
