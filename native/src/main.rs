@@ -11,6 +11,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::time::Duration;
 
+use i_slint_backend_winit::WinitWindowAccessor;
 use settings::Settings;
 use timer::{Event, Phase, Timer};
 
@@ -77,7 +78,7 @@ fn populate_settings(w: &SettingsWindow, s: &Settings) {
     w.set_long_hint(long_hint(s).into());
 }
 
-fn read_settings(w: &SettingsWindow) -> Settings {
+fn read_settings(w: &SettingsWindow, base: &Settings) -> Settings {
     Settings {
         work_interval_secs: w.get_work_min().max(1) as u64 * 60,
         break_length_secs: w.get_break_sec().max(5) as u64,
@@ -96,6 +97,8 @@ fn read_settings(w: &SettingsWindow) -> Settings {
         posture_interval_secs: w.get_posture_min().max(5) as u64 * 60,
         eyedrops_enabled: w.get_eyedrops_enabled(),
         eyedrops_interval_secs: w.get_eyedrops_min().max(5) as u64 * 60,
+        // preserve fields not shown in the settings UI (widget geometry, …)
+        ..base.clone()
     }
 }
 
@@ -260,7 +263,7 @@ fn main() -> Result<(), slint::PlatformError> {
         let render = render.clone();
         settings_win.on_save(move || {
             let Some(w) = settings_w.upgrade() else { return };
-            let next = read_settings(&w);
+            let next = read_settings(&w, &settings.borrow());
             timer.borrow_mut().apply_settings(&next);
             next.save();
             *settings.borrow_mut() = next;
@@ -278,13 +281,89 @@ fn main() -> Result<(), slint::PlatformError> {
         });
     }
 
-    // Widget: bring the dashboard back to the front.
+    // ---- floating widget: restore, geometry, drag, resize, persistence ----
     {
         let main_w = main_win.as_weak();
         widget_win.on_restore(move || {
             if let Some(w) = main_w.upgrade() {
                 let _ = w.show();
-                // focus is best-effort across backends
+            }
+        });
+    }
+    // apply saved size/position + clamp the resizable range (120–480, as Tauri)
+    {
+        let s = settings.borrow();
+        widget_win
+            .window()
+            .set_size(slint::LogicalSize::new(s.widget_width as f32, s.widget_height as f32));
+        if let (Some(x), Some(y)) = (s.widget_x, s.widget_y) {
+            widget_win
+                .window()
+                .set_position(slint::LogicalPosition::new(x as f32, y as f32));
+        }
+        widget_win.window().with_winit_window(|win| {
+            use i_slint_backend_winit::winit::dpi::LogicalSize;
+            win.set_min_inner_size(Some(LogicalSize::new(
+                settings::WIDGET_MIN as f64,
+                settings::WIDGET_MIN as f64,
+            )));
+            win.set_max_inner_size(Some(LogicalSize::new(
+                settings::WIDGET_MAX as f64,
+                settings::WIDGET_MAX as f64,
+            )));
+        });
+    }
+    // press-drag to move; corner grip to resize (native interactive drags)
+    {
+        let widget_w = widget_win.as_weak();
+        widget_win.on_start_drag(move || {
+            if let Some(w) = widget_w.upgrade() {
+                w.window().with_winit_window(|win| {
+                    let _ = win.drag_window();
+                });
+            }
+        });
+    }
+    {
+        let widget_w = widget_win.as_weak();
+        widget_win.on_start_resize(move || {
+            if let Some(w) = widget_w.upgrade() {
+                use i_slint_backend_winit::winit::window::ResizeDirection;
+                w.window().with_winit_window(|win| {
+                    let _ = win.drag_resize_window(ResizeDirection::SouthEast);
+                });
+            }
+        });
+    }
+    // persist widget geometry (logical px) whenever it changes
+    let geom_timer = slint::Timer::default();
+    {
+        let widget_w = widget_win.as_weak();
+        let settings = settings.clone();
+        geom_timer.start(slint::TimerMode::Repeated, Duration::from_secs(2), move || {
+            let Some(w) = widget_w.upgrade() else { return };
+            let win = w.window();
+            let scale = win.scale_factor().max(0.1);
+            let size = win.size();
+            let pos = win.position();
+            let (lw, lh) = (
+                (size.width as f32 / scale).round() as u32,
+                (size.height as f32 / scale).round() as u32,
+            );
+            let (lx, ly) = (
+                (pos.x as f32 / scale).round() as i32,
+                (pos.y as f32 / scale).round() as i32,
+            );
+            if lw < 1 || lh < 1 {
+                return;
+            }
+            let mut s = settings.borrow_mut();
+            if s.widget_width != lw || s.widget_height != lh || s.widget_x != Some(lx) || s.widget_y != Some(ly) {
+                s.widget_width = lw.clamp(settings::WIDGET_MIN, settings::WIDGET_MAX);
+                s.widget_height = lh.clamp(settings::WIDGET_MIN, settings::WIDGET_MAX);
+                s.widget_x = Some(lx);
+                s.widget_y = Some(ly);
+                s.save();
             }
         });
     }

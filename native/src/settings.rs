@@ -28,6 +28,12 @@ pub struct Settings {
     pub posture_interval_secs: u64,
     pub eyedrops_enabled: bool,
     pub eyedrops_interval_secs: u64,
+
+    // floating widget geometry (persisted across runs)
+    pub widget_width: u32,
+    pub widget_height: u32,
+    pub widget_x: Option<i32>,
+    pub widget_y: Option<i32>,
 }
 
 impl Default for Settings {
@@ -50,9 +56,17 @@ impl Default for Settings {
             posture_interval_secs: 30 * 60,
             eyedrops_enabled: false,
             eyedrops_interval_secs: 2 * 60 * 60,
+            widget_width: 132,
+            widget_height: 132,
+            widget_x: None,
+            widget_y: None,
         }
     }
 }
+
+/// Clamp the widget to a sane size range (mirrors the Tauri 120–480 clamp).
+pub const WIDGET_MIN: u32 = 120;
+pub const WIDGET_MAX: u32 = 480;
 
 impl Settings {
     fn path() -> Option<PathBuf> {

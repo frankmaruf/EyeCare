@@ -4,6 +4,7 @@ import { ScrollView } from "std-widgets.slint";
 // Dashboard — mirrors showDashboard() in eyecare/src/main.ts.
 export component MainWindow inherits Window {
     title: "EyeCare";
+    icon: @image-url("icon.png");
     width: 360px;
     height: 440px;
     background: Theme.bg;
@@ -121,6 +122,7 @@ export component MainWindow inherits Window {
 // Break overlay — mirrors renderBreak() in eyecare/src/main.ts.
 export component BreakWindow inherits Window {
     title: "EyeCare — break time";
+    icon: @image-url("icon.png");
     width: 580px;
     height: 480px;
     background: Theme.bg;
@@ -205,6 +207,7 @@ export component BreakWindow inherits Window {
 // nudges / theme / stats / import-export land in later increments).
 export component SettingsWindow inherits Window {
     title: "EyeCare — Settings";
+    icon: @image-url("icon.png");
     width: 440px;
     height: 600px;
     background: Theme.bg;
@@ -414,6 +417,7 @@ export component SettingsWindow inherits Window {
 // Floating widget — mirrors renderWidget(): small always-on-top countdown ring.
 export component WidgetWindow inherits Window {
     title: "EyeCare widget";
+    icon: @image-url("icon.png");
     width: 132px;
     height: 132px;
     background: transparent;
@@ -426,6 +430,8 @@ export component WidgetWindow inherits Window {
     callback pause();
     callback take-break();
     callback skip();
+    callback start-drag();
+    callback start-resize();
 
     card := Rectangle {
         width: 100%;
@@ -435,7 +441,15 @@ export component WidgetWindow inherits Window {
         border-width: 1px;
         border-color: #2b3a57;
 
-        hover := TouchArea { }
+        // press-and-drag the body to move the widget (matches startDragging)
+        hover := TouchArea {
+            mouse-cursor: grab;
+            pointer-event(e) => {
+                if (e.kind == PointerEventKind.down && e.button == PointerEventButton.left) {
+                    root.start-drag();
+                }
+            }
+        }
 
         // ---- ring with tick marks ----
         ringbox := Rectangle {
@@ -552,6 +566,34 @@ export component WidgetWindow inherits Window {
                 icon: "⏭";
                 clicked => {
                     root.skip();
+                }
+            }
+        }
+
+        // ---- corner resize grip (matches the Tauri drag-to-resize) ----
+        resize := Rectangle {
+            x: parent.width - 17px;
+            y: parent.height - 17px;
+            width: 14px;
+            height: 14px;
+            opacity: hover.has-hover ? 0.85 : 0.0;
+            animate opacity { duration: 120ms; }
+            Text {
+                text: "⌟";
+                color: Theme.muted;
+                font-size: 14px;
+                width: 100%;
+                height: 100%;
+                horizontal-alignment: right;
+                vertical-alignment: bottom;
+            }
+
+            TouchArea {
+                mouse-cursor: nwse-resize;
+                pointer-event(e) => {
+                    if (e.kind == PointerEventKind.down && e.button == PointerEventButton.left) {
+                        root.start-resize();
+                    }
                 }
             }
         }

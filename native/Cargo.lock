@@ -1151,6 +1151,7 @@ name = "eyecare-native"
 version = "0.1.0"
 dependencies = [
  "dirs",
+ "i-slint-backend-winit",
  "notify-rust",
  "serde",
  "serde_json",
