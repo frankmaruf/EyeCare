@@ -57,6 +57,16 @@ fn long_hint(s: &Settings) -> String {
     )
 }
 
+const SHAPES: [&str; 3] = ["round", "squircle", "square"];
+
+fn shape_to_idx(shape: &str) -> i32 {
+    SHAPES.iter().position(|&s| s == shape).unwrap_or(1) as i32
+}
+
+fn idx_to_shape(idx: i32) -> String {
+    SHAPES.get(idx.max(0) as usize).copied().unwrap_or("squircle").to_string()
+}
+
 fn populate_settings(w: &SettingsWindow, s: &Settings) {
     w.set_work_min((s.work_interval_secs / 60) as i32);
     w.set_break_sec(s.break_length_secs as i32);
@@ -75,7 +85,7 @@ fn populate_settings(w: &SettingsWindow, s: &Settings) {
     w.set_posture_min((s.posture_interval_secs / 60).max(1) as i32);
     w.set_eyedrops_enabled(s.eyedrops_enabled);
     w.set_eyedrops_min((s.eyedrops_interval_secs / 60).max(1) as i32);
-    w.set_widget_shape(s.widget_shape.clone().into());
+    w.set_widget_shape_idx(shape_to_idx(&s.widget_shape));
     w.set_widget_opacity(s.widget_opacity as i32);
     w.set_widget_w(s.widget_width as i32);
     w.set_widget_h(s.widget_height as i32);
@@ -101,7 +111,7 @@ fn read_settings(w: &SettingsWindow, base: &Settings) -> Settings {
         posture_interval_secs: w.get_posture_min().max(5) as u64 * 60,
         eyedrops_enabled: w.get_eyedrops_enabled(),
         eyedrops_interval_secs: w.get_eyedrops_min().max(5) as u64 * 60,
-        widget_shape: w.get_widget_shape().to_string(),
+        widget_shape: idx_to_shape(w.get_widget_shape_idx()),
         widget_opacity: w.get_widget_opacity().clamp(20, 100) as u32,
         widget_width: w.get_widget_w().clamp(120, 480) as u32,
         widget_height: w.get_widget_h().clamp(120, 480) as u32,

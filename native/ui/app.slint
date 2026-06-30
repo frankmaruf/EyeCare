@@ -229,7 +229,7 @@ export component SettingsWindow inherits Window {
     in-out property <int> posture-min;
     in-out property <bool> eyedrops-enabled;
     in-out property <int> eyedrops-min;
-    in-out property <string> widget-shape;
+    in-out property <int> widget-shape-idx;
     in-out property <int> widget-opacity;
     in-out property <int> widget-w;
     in-out property <int> widget-h;
@@ -410,7 +410,7 @@ export component SettingsWindow inherits Window {
 
                         ComboBox {
                             model: ["round", "squircle", "square"];
-                            current-value <=> root.widget-shape;
+                            current-index <=> root.widget-shape-idx;
                             width: 130px;
                         }
                     }
