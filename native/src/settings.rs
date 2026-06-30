@@ -12,6 +12,8 @@ pub struct Settings {
     pub work_interval_secs: u64,
     pub break_length_secs: u64,
     pub pre_break_warning_secs: u64,
+    pub escalation: String, // "gentle" | "standard" | "forced"
+    pub sound_enabled: bool,
     pub snooze_secs: u64,
     pub max_postpones: u32,
     pub long_break_enabled: bool,
@@ -29,6 +31,11 @@ pub struct Settings {
     pub eyedrops_enabled: bool,
     pub eyedrops_interval_secs: u64,
 
+    // appearance
+    pub accent: String, // hex "#rrggbb"
+    pub reduce_motion: bool,
+    pub high_contrast: bool,
+
     // floating widget
     pub widget_shape: String, // "round" | "squircle" | "square"
     pub widget_opacity: u32,   // 0–100
@@ -44,6 +51,8 @@ impl Default for Settings {
             work_interval_secs: 20 * 60,
             break_length_secs: 20,
             pre_break_warning_secs: 30,
+            escalation: "standard".into(),
+            sound_enabled: false,
             snooze_secs: 3 * 60,
             max_postpones: 2,
             long_break_enabled: true,
@@ -58,6 +67,9 @@ impl Default for Settings {
             posture_interval_secs: 30 * 60,
             eyedrops_enabled: false,
             eyedrops_interval_secs: 2 * 60 * 60,
+            accent: "#4cc6c0".into(),
+            reduce_motion: false,
+            high_contrast: false,
             widget_shape: "squircle".into(),
             widget_opacity: 95,
             widget_width: 132,

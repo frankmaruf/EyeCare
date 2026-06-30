@@ -1,6 +1,9 @@
 import { Theme, Ring, PillButton, Card, NumberField, ToggleRow, IconButton } from "theme.slint";
 import { ScrollView, ComboBox } from "std-widgets.slint";
 
+// re-export so the Theme global is reachable from Rust (appearance settings)
+export { Theme }
+
 // Dashboard — mirrors showDashboard() in eyecare/src/main.ts.
 export component MainWindow inherits Window {
     title: "EyeCare";
@@ -215,8 +218,13 @@ export component SettingsWindow inherits Window {
     in-out property <int> work-min;
     in-out property <int> break-sec;
     in-out property <int> prewarn-sec;
+    in-out property <int> escalation-idx;
+    in-out property <bool> sound-enabled;
     in-out property <int> snooze-min;
     in-out property <int> max-postpones;
+    in-out property <int> accent-idx;
+    in-out property <bool> reduce-motion;
+    in-out property <bool> high-contrast;
     in-out property <bool> long-enabled;
     in-out property <int> long-every;
     in-out property <int> long-min;
@@ -318,6 +326,29 @@ export component SettingsWindow inherits Window {
 
                 Card {
                     title: "Reminders";
+                    HorizontalLayout {
+                        height: 32px;
+                        spacing: 8px;
+                        Text {
+                            text: "Intensity";
+                            color: Theme.text;
+                            font-size: 14px;
+                            vertical-alignment: center;
+                            horizontal-stretch: 1;
+                        }
+
+                        ComboBox {
+                            model: ["gentle", "standard", "forced"];
+                            current-index <=> root.escalation-idx;
+                            width: 130px;
+                        }
+                    }
+
+                    ToggleRow {
+                        label: "Play a sound on break";
+                        checked <=> root.sound-enabled;
+                    }
+
                     NumberField {
                         label: "Snooze / postpone";
                         unit: "min";
@@ -437,6 +468,45 @@ export component SettingsWindow inherits Window {
                         value <=> root.widget-h;
                         minimum: 120;
                         maximum: 480;
+                    }
+                }
+
+                Card {
+                    title: "Appearance";
+                    HorizontalLayout {
+                        height: 30px;
+                        spacing: 8px;
+                        Text {
+                            text: "Accent";
+                            color: Theme.text;
+                            font-size: 14px;
+                            vertical-alignment: center;
+                            horizontal-stretch: 1;
+                        }
+
+                        for col[i] in [#4cc6c0, #34d399, #5b8def, #e2725b, #a78bfa, #f59e0b]: Rectangle {
+                            width: 24px;
+                            height: 24px;
+                            border-radius: 12px;
+                            background: col;
+                            border-width: root.accent-idx == i ? 3px : 0px;
+                            border-color: #ffffff;
+                            TouchArea {
+                                clicked => {
+                                    root.accent-idx = i;
+                                }
+                            }
+                        }
+                    }
+
+                    ToggleRow {
+                        label: "Reduce motion (no animations)";
+                        checked <=> root.reduce-motion;
+                    }
+
+                    ToggleRow {
+                        label: "High contrast";
+                        checked <=> root.high-contrast;
                     }
                 }
             }
@@ -573,7 +643,7 @@ export component WidgetWindow inherits Window {
             border-radius: 7px;
             background: rt.has-hover ? #2a3a59 : #1c2a45;
             opacity: hover.has-hover ? 1.0 : 0.0;
-            animate opacity { duration: 120ms; }
+            animate opacity { duration: Theme.anim; }
             Text {
                 text: "⤢";
                 color: Theme.muted;
@@ -599,7 +669,7 @@ export component WidgetWindow inherits Window {
             alignment: center;
             spacing: 8px;
             opacity: hover.has-hover ? 1.0 : 0.0;
-            animate opacity { duration: 120ms; }
+            animate opacity { duration: Theme.anim; }
             IconButton {
                 icon: root.pause-icon;
                 clicked => {
@@ -630,7 +700,7 @@ export component WidgetWindow inherits Window {
             width: 14px;
             height: 14px;
             opacity: hover.has-hover ? 0.85 : 0.0;
-            animate opacity { duration: 120ms; }
+            animate opacity { duration: Theme.anim; }
             Text {
                 text: "⌟";
                 color: Theme.muted;

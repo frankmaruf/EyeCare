@@ -4,15 +4,21 @@
 import { SpinBox, CheckBox } from "std-widgets.slint";
 
 export global Theme {
+    // runtime-settable from Rust (appearance settings)
+    in-out property <color> accent: #4cc6c0;
+    in-out property <bool> reduce-motion: false;
+    in-out property <bool> high-contrast: false;
+
     out property <color> bg: #0e1726;
     out property <color> panel: #16223a;
-    out property <color> border: #25324a;
-    out property <color> text: #e8eef7;
-    out property <color> muted: #93a3bd;
-    out property <color> accent: #4cc6c0;
+    out property <color> border: root.high-contrast ? #4a5d7e : #25324a;
+    out property <color> text: root.high-contrast ? #ffffff : #e8eef7;
+    out property <color> muted: root.high-contrast ? #c8d4e6 : #93a3bd;
     out property <color> ring-track: #1f2c45;
     out property <color> danger: #e2725b;
     out property <length> radius: 10px;
+    // animation duration helper: 0 when reduce-motion is on
+    out property <duration> anim: root.reduce-motion ? 0ms : 120ms;
 }
 
 // Pill button matching .btn / .btn.ghost. `ghost` = outlined, `accent` = filled.

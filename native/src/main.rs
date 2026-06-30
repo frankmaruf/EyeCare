@@ -58,19 +58,42 @@ fn long_hint(s: &Settings) -> String {
 }
 
 const SHAPES: [&str; 3] = ["round", "squircle", "square"];
+const ESCALATIONS: [&str; 3] = ["gentle", "standard", "forced"];
+const ACCENTS: [&str; 6] = ["#4cc6c0", "#34d399", "#5b8def", "#e2725b", "#a78bfa", "#f59e0b"];
+
+/// Index of `val` in `list`, defaulting to `default`. Keeps the combo/swatch
+/// <-> string mapping in one place.
+fn to_idx(list: &[&str], val: &str, default: i32) -> i32 {
+    list.iter().position(|&s| s == val).map(|i| i as i32).unwrap_or(default)
+}
+
+fn from_idx(list: &[&str], idx: i32, default: &str) -> String {
+    list.get(idx.max(0) as usize).copied().unwrap_or(default).to_string()
+}
 
 fn shape_to_idx(shape: &str) -> i32 {
-    SHAPES.iter().position(|&s| s == shape).unwrap_or(1) as i32
+    to_idx(&SHAPES, shape, 1)
 }
 
 fn idx_to_shape(idx: i32) -> String {
-    SHAPES.get(idx.max(0) as usize).copied().unwrap_or("squircle").to_string()
+    from_idx(&SHAPES, idx, "squircle")
+}
+
+/// Parse "#rrggbb" into a Slint color (falls back to the default accent).
+fn parse_color(hex: &str) -> slint::Color {
+    let n = u32::from_str_radix(hex.trim_start_matches('#'), 16).unwrap_or(0x4cc6c0);
+    slint::Color::from_rgb_u8((n >> 16) as u8, (n >> 8) as u8, n as u8)
 }
 
 fn populate_settings(w: &SettingsWindow, s: &Settings) {
     w.set_work_min((s.work_interval_secs / 60) as i32);
     w.set_break_sec(s.break_length_secs as i32);
     w.set_prewarn_sec(s.pre_break_warning_secs as i32);
+    w.set_escalation_idx(to_idx(&ESCALATIONS, &s.escalation, 1));
+    w.set_sound_enabled(s.sound_enabled);
+    w.set_accent_idx(to_idx(&ACCENTS, &s.accent, 0));
+    w.set_reduce_motion(s.reduce_motion);
+    w.set_high_contrast(s.high_contrast);
     w.set_snooze_min((s.snooze_secs / 60) as i32);
     w.set_max_postpones(s.max_postpones as i32);
     w.set_long_enabled(s.long_break_enabled);
@@ -97,6 +120,11 @@ fn read_settings(w: &SettingsWindow, base: &Settings) -> Settings {
         work_interval_secs: w.get_work_min().max(1) as u64 * 60,
         break_length_secs: w.get_break_sec().max(5) as u64,
         pre_break_warning_secs: w.get_prewarn_sec().max(0) as u64,
+        escalation: from_idx(&ESCALATIONS, w.get_escalation_idx(), "standard"),
+        sound_enabled: w.get_sound_enabled(),
+        accent: from_idx(&ACCENTS, w.get_accent_idx(), "#4cc6c0"),
+        reduce_motion: w.get_reduce_motion(),
+        high_contrast: w.get_high_contrast(),
         snooze_secs: w.get_snooze_min().max(1) as u64 * 60,
         max_postpones: w.get_max_postpones().max(0) as u32,
         long_break_enabled: w.get_long_enabled(),
@@ -128,6 +156,25 @@ fn main() -> Result<(), slint::PlatformError> {
     let break_win = BreakWindow::new()?;
     let settings_win = SettingsWindow::new()?;
     let widget_win = WidgetWindow::new()?;
+
+    // Push appearance settings onto a window's Theme global (each top-level
+    // window owns its own global instance, so we apply to all of them).
+    macro_rules! set_theme {
+        ($w:expr, $accent:expr, $rm:expr, $hc:expr) => {{
+            let g = $w.global::<Theme>();
+            g.set_accent($accent);
+            g.set_reduce_motion($rm);
+            g.set_high_contrast($hc);
+        }};
+    }
+    {
+        let s = settings.borrow();
+        let c = parse_color(&s.accent);
+        set_theme!(main_win, c, s.reduce_motion, s.high_contrast);
+        set_theme!(break_win, c, s.reduce_motion, s.high_contrast);
+        set_theme!(settings_win, c, s.reduce_motion, s.high_contrast);
+        set_theme!(widget_win, c, s.reduce_motion, s.high_contrast);
+    }
 
     // Single source of truth → every window. One closure keeps them in sync.
     let render = {
@@ -183,13 +230,30 @@ fn main() -> Result<(), slint::PlatformError> {
         move || {
             let Some(w) = break_w.upgrade() else { return };
             let t = timer.borrow();
-            if t.phase == Phase::Break {
-                if settings.borrow().tips_enabled {
+            let s = settings.borrow();
+            // "gentle" intensity uses a notification only — no window grab.
+            if t.phase == Phase::Break && s.escalation != "gentle" {
+                if s.tips_enabled {
                     w.set_tip_text(format!("💡 {}", TIPS[t.breaks_done as usize % TIPS.len()]).into());
                 } else {
                     w.set_tip_text("".into());
                 }
-                w.set_can_postpone(t.postpones_used < settings.borrow().max_postpones);
+                w.set_can_postpone(t.postpones_used < s.max_postpones);
+                // "forced" goes fullscreen + always-on-top; "standard" is a window.
+                let forced = s.escalation == "forced";
+                w.window().with_winit_window(|win| {
+                    use i_slint_backend_winit::winit::window::{Fullscreen, WindowLevel};
+                    win.set_fullscreen(if forced {
+                        Some(Fullscreen::Borderless(None))
+                    } else {
+                        None
+                    });
+                    win.set_window_level(if forced {
+                        WindowLevel::AlwaysOnTop
+                    } else {
+                        WindowLevel::Normal
+                    });
+                });
                 let _ = w.show();
             } else {
                 let _ = w.hide();
@@ -212,7 +276,11 @@ fn main() -> Result<(), slint::PlatformError> {
             let res = timer.borrow_mut().tick(&settings.borrow());
             match res.event {
                 Event::Prewarn => notify("Eye break soon", "A break is coming up — finish your thought."),
-                Event::BreakStart | Event::BreakEnd => sync_break(),
+                Event::BreakStart => {
+                    notify("Time for an eye break", "Look ~20 feet (6 m) away and relax your eyes.");
+                    sync_break();
+                }
+                Event::BreakEnd => sync_break(),
                 Event::None => {}
             }
             let n = res.nudges;
@@ -281,6 +349,8 @@ fn main() -> Result<(), slint::PlatformError> {
     {
         let settings_w = settings_win.as_weak();
         let widget_w = widget_win.as_weak();
+        let main_w = main_win.as_weak();
+        let break_w = break_win.as_weak();
         let settings = settings.clone();
         let timer = timer.clone();
         let render = render.clone();
@@ -290,13 +360,23 @@ fn main() -> Result<(), slint::PlatformError> {
             timer.borrow_mut().apply_settings(&next);
             next.save();
             *settings.borrow_mut() = next;
-            // push the new widget size to the live widget window
+            let s = settings.borrow();
+            let c = parse_color(&s.accent);
+            // live-apply appearance to every window, and the widget size
+            set_theme!(w, c, s.reduce_motion, s.high_contrast);
+            if let Some(m) = main_w.upgrade() {
+                set_theme!(m, c, s.reduce_motion, s.high_contrast);
+            }
+            if let Some(b) = break_w.upgrade() {
+                set_theme!(b, c, s.reduce_motion, s.high_contrast);
+            }
             if let Some(wd) = widget_w.upgrade() {
-                let s = settings.borrow();
+                set_theme!(wd, c, s.reduce_motion, s.high_contrast);
                 wd.window()
                     .set_size(slint::LogicalSize::new(s.widget_width as f32, s.widget_height as f32));
             }
-            w.set_long_hint(long_hint(&settings.borrow()).into());
+            w.set_long_hint(long_hint(&s).into());
+            drop(s);
             let _ = w.hide();
             render();
         });
