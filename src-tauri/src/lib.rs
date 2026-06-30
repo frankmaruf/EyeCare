@@ -6,8 +6,13 @@
 // and calls commands; all timing lives here so it stays precise and survives
 // webview reloads.
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 use std::time::Duration;
+
+/// Set when the user explicitly quits (tray → Quit), so the exit guard knows to
+/// let the process exit instead of keeping it alive in the tray.
+static QUITTING: AtomicBool = AtomicBool::new(false);
 
 use chrono::{Datelike, Timelike};
 use serde::{Deserialize, Serialize};
@@ -386,10 +391,6 @@ struct AppState {
     /// Whether the user wants the main window shown. We track this ourselves
     /// instead of polling is_visible(), which is unreliable on some compositors.
     main_shown: Mutex<bool>,
-    /// True once we've seen the main window report not-minimized at least once
-    /// (i.e. it's fully mapped). is_minimized() reports a false "true" while the
-    /// window is still being mapped at startup, so we ignore it until ready.
-    main_ready: Mutex<bool>,
 }
 
 /// Snapshot sent to the frontend on every tick.
@@ -703,37 +704,12 @@ fn update_widget_visibility(app: &AppHandle) {
             s.respect_dnd,
         )
     };
-    // Catch a native minimize (the title-bar button) and convert it to
-    // hide-to-tray: a minimized window stays grouped with the app, so the WM
-    // would minimize the widget along with it. This is the only place we poll
-    // is_minimized(), and only while we believe the window is shown, so a stray
-    // reading can't keep re-hiding it.
-    if mode != "off" {
-        let shown = *app.state::<AppState>().main_shown.lock().unwrap();
-        if shown {
-            if let Some(main) = app.get_webview_window("main") {
-                let minimized = main.is_minimized().unwrap_or(false);
-                let state = app.state::<AppState>();
-                let mut ready = state.main_ready.lock().unwrap();
-                if !*ready {
-                    // Wait until the window is properly mapped (reports
-                    // not-minimized) before trusting a "minimized" reading.
-                    if !minimized {
-                        *ready = true;
-                    }
-                } else if minimized {
-                    drop(ready);
-                    // Hide straight to the tray. Don't unminimize first — that
-                    // briefly re-shows the window (a visible flicker) before it
-                    // hides. show_main_window() unminimizes on restore.
-                    let _ = main.hide();
-                    *state.main_shown.lock().unwrap() = false;
-                    *state.main_ready.lock().unwrap() = false;
-                }
-            }
-        }
-    }
-
+    // Note: we no longer poll is_minimized() to auto-hide the main window. That
+    // polling had transient false-positives on some compositors (KDE), which
+    // would spuriously hide — or, once the webview is freed on close, destroy —
+    // the window. Instead the widget appears when the main window is *closed*
+    // (the reliable Close/X event, which also frees its ~200 MB webview); the
+    // native minimize button now just minimizes normally.
     let main_shown = *app.state::<AppState>().main_shown.lock().unwrap();
     let break_open = app.get_webview_window("break").is_some();
     let mut want = mode != "off" && !break_open && (mode == "always" || !main_shown);
@@ -793,18 +769,49 @@ fn emit_tick(app: &AppHandle) {
     update_widget_visibility(app);
 }
 
-fn show_main_window(app: &AppHandle) {
+/// Closing/minimizing the main window destroys its webview to free memory (a
+/// WebKit/WebView2 renderer is ~200 MB). The app stays alive in the tray, and
+/// the window is rebuilt on demand by `show_main_window`. This handler turns a
+/// close/minimize into "free the webview + show the widget".
+fn attach_main_close_handler(w: &tauri::WebviewWindow) {
+    let win = w.clone();
+    w.on_window_event(move |event| {
+        if let WindowEvent::CloseRequested { .. } = event {
+            // Don't prevent the close — letting it through frees the renderer.
+            let app = win.app_handle();
+            *app.state::<AppState>().main_shown.lock().unwrap() = false;
+            update_widget_visibility(app);
+        }
+    });
+}
+
+/// Build the main window (same config as tauri.conf) when it isn't currently
+/// alive. Returns the existing one if present.
+fn create_main(app: &AppHandle) -> Option<tauri::WebviewWindow> {
     if let Some(w) = app.get_webview_window("main") {
-        let _ = w.unminimize();
-        let _ = w.show();
-        let _ = w.set_focus();
+        return Some(w);
     }
-    {
-        let state = app.state::<AppState>();
-        *state.main_shown.lock().unwrap() = true;
-        // re-confirm mapping before we trust is_minimized() again
-        *state.main_ready.lock().unwrap() = false;
-    }
+    let w = WebviewWindowBuilder::new(app, "main", WebviewUrl::default())
+        .title("EyeCare")
+        .inner_size(760.0, 680.0)
+        .min_inner_size(520.0, 520.0)
+        .resizable(true)
+        .build()
+        .ok()?;
+    let _ = w.set_icon(app_image());
+    attach_main_close_handler(&w);
+    Some(w)
+}
+
+fn show_main_window(app: &AppHandle) {
+    let w = match create_main(app) {
+        Some(w) => w,
+        None => return,
+    };
+    let _ = w.unminimize();
+    let _ = w.show();
+    let _ = w.set_focus();
+    *app.state::<AppState>().main_shown.lock().unwrap() = true;
     update_widget_visibility(app);
 }
 
@@ -1477,7 +1484,6 @@ pub fn run() {
                 settings: Mutex::new(settings),
                 timer: Mutex::new(timer),
                 main_shown: Mutex::new(true),
-                main_ready: Mutex::new(false),
                 shortcuts: Mutex::new(Vec::new()),
                 widget_hidden_override: Mutex::new(false),
             });
@@ -1511,7 +1517,10 @@ pub fn run() {
                     "take" => do_take_break(app),
                     "skip" => do_skip(app),
                     "widget" => do_toggle_widget(app),
-                    "quit" => app.exit(0),
+                    "quit" => {
+                        QUITTING.store(true, Ordering::SeqCst);
+                        app.exit(0);
+                    }
                     _ => {}
                 })
                 .build(app)?;
@@ -1523,19 +1532,11 @@ pub fn run() {
                 }
             }
 
-            // Closing the main window hides it to the tray instead of quitting;
-            // that's when the floating widget should appear (if enabled).
+            // Closing/minimizing the main window destroys its webview to free
+            // memory (the app stays alive in the tray); the floating widget
+            // appears in its place. The window is rebuilt on restore.
             if let Some(main) = app.get_webview_window("main") {
-                let main_clone = main.clone();
-                main.on_window_event(move |event| {
-                    if let WindowEvent::CloseRequested { api, .. } = event {
-                        api.prevent_close();
-                        let _ = main_clone.hide();
-                        let app = main_clone.app_handle();
-                        *app.state::<AppState>().main_shown.lock().unwrap() = false;
-                        update_widget_visibility(app);
-                    }
-                });
+                attach_main_close_handler(&main);
             }
 
             // Floating widget: apply saved size/position and remember where the
@@ -1600,6 +1601,15 @@ pub fn run() {
             install_update,
             get_stats
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|_app, event| {
+            // Keep running in the tray when the last window closes (e.g. the
+            // main window was minimized away). Only a real Quit exits.
+            if let tauri::RunEvent::ExitRequested { api, .. } = event {
+                if !QUITTING.load(Ordering::SeqCst) {
+                    api.prevent_exit();
+                }
+            }
+        });
 }
