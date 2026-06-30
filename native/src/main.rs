@@ -75,6 +75,20 @@ fn fmt(secs: u64) -> slint::SharedString {
     format!("{:02}:{:02}", secs / 60, secs % 60).into()
 }
 
+/// Dev-only: dump a rendered window to a PNG so the layout can be inspected
+/// headlessly (EYECARE_SNAP=1). Uses the png crate (Linux dep).
+#[cfg(target_os = "linux")]
+fn save_png(buf: &slint::SharedPixelBuffer<slint::Rgba8Pixel>, path: &str) {
+    if let Ok(file) = std::fs::File::create(path) {
+        let mut enc = png::Encoder::new(file, buf.width(), buf.height());
+        enc.set_color(png::ColorType::Rgba);
+        enc.set_depth(png::BitDepth::Eight);
+        if let Ok(mut w) = enc.write_header() {
+            let _ = w.write_image_data(buf.as_bytes());
+        }
+    }
+}
+
 /// Fire a desktop notification (cross-platform via notify-rust).
 fn notify(title: &str, body: &str) {
     let _ = notify_rust::Notification::new()
@@ -285,6 +299,12 @@ fn main() -> Result<(), slint::PlatformError> {
     let break_win = BreakWindow::new()?;
     let widget_win = WidgetWindow::new()?;
 
+    // Closing the dashboard hides it (so the tray "Open" can re-show it) instead
+    // of destroying the surface — re-showing a destroyed Wayland window fails.
+    main_win
+        .window()
+        .on_close_requested(|| slint::CloseRequestResponse::HideWindow);
+
     // Push appearance settings onto a window's Theme global (each top-level
     // window owns its own global instance, so we apply to all of them).
     macro_rules! set_theme {
@@ -386,13 +406,15 @@ fn main() -> Result<(), slint::PlatformError> {
                     } else {
                         None
                     });
-                    win.set_window_level(if forced {
-                        WindowLevel::AlwaysOnTop
-                    } else {
-                        WindowLevel::Normal
-                    });
+                    win.set_window_level(WindowLevel::AlwaysOnTop);
+                    let _ = forced;
                 });
                 let _ = w.show();
+                // bring the break overlay to the front + focus it
+                w.window().with_winit_window(|win| {
+                    win.set_visible(true);
+                    win.focus_window();
+                });
             } else {
                 let _ = w.hide();
             }
@@ -855,6 +877,39 @@ fn main() -> Result<(), slint::PlatformError> {
         );
         (handle, dispatch)
     };
+
+    // Dev: dump dashboard / widget / settings renders to /tmp for inspection.
+    #[cfg(target_os = "linux")]
+    if std::env::var("EYECARE_SNAP").is_ok() {
+        let mw = main_win.as_weak();
+        let ww = widget_win.as_weak();
+        let bw = break_win.as_weak();
+        let settings_c = settings.clone();
+        slint::Timer::single_shot(Duration::from_millis(1500), move || {
+            if let Some(w) = mw.upgrade() {
+                if let Ok(b) = w.window().take_snapshot() {
+                    save_png(&b, "/tmp/ec-dash.png");
+                }
+                w.set_app_version(updater::current_version().into());
+                populate_settings(&w, &settings_c.borrow());
+                w.set_show_settings(true);
+            }
+            if let Some(wd) = ww.upgrade() {
+                if let Ok(b) = wd.window().take_snapshot() {
+                    save_png(&b, "/tmp/ec-widget.png");
+                }
+            }
+            let _ = &bw;
+            let mw2 = mw.clone();
+            slint::Timer::single_shot(Duration::from_millis(800), move || {
+                if let Some(w) = mw2.upgrade() {
+                    if let Ok(b) = w.window().take_snapshot() {
+                        save_png(&b, "/tmp/ec-settings.png");
+                    }
+                }
+            });
+        });
+    }
 
     main_win.run()
 }
