@@ -901,7 +901,7 @@ export component WidgetWindow inherits Window {
 
         // auto-hide the controls 2.5s after the pointer leaves
         hide-timer := Timer {
-            interval: 2500ms;
+            interval: 1200ms;
             running: root.controls-visible && !root.hovering;
             triggered => {
                 root.controls-visible = false;
@@ -915,7 +915,7 @@ export component WidgetWindow inherits Window {
             width: self.d;
             height: self.d;
             x: (parent.width - self.width) / 2;
-            y: (parent.height - self.height) / 2 - 10px;
+            y: (parent.height - self.height) / 2;
 
             // track
             Rectangle {
