@@ -120,6 +120,19 @@ fn idx_to_shape(idx: i32) -> String {
     from_idx(&SHAPES, idx, "squircle")
 }
 
+/// Enable/disable launch-at-login (cross-platform via auto-launch).
+fn apply_autostart(enabled: bool) {
+    let Ok(exe) = std::env::current_exe() else { return };
+    let Some(path) = exe.to_str() else { return };
+    if let Ok(al) = auto_launch::AutoLaunchBuilder::new()
+        .set_app_name("EyeCare")
+        .set_app_path(path)
+        .build()
+    {
+        let _ = if enabled { al.enable() } else { al.disable() };
+    }
+}
+
 /// Parse "HH:MM" into (hour, minute) ints.
 fn parse_hm(t: &str) -> (i32, i32) {
     let mut it = t.split(':');
@@ -143,6 +156,7 @@ fn populate_settings(w: &SettingsWindow, s: &Settings) {
     w.set_accent_idx(to_idx(&ACCENTS, &s.accent, 0));
     w.set_reduce_motion(s.reduce_motion);
     w.set_high_contrast(s.high_contrast);
+    w.set_autostart(s.autostart);
     w.set_idle_enabled(s.idle_pause_enabled);
     w.set_idle_sec(s.idle_threshold_secs as i32);
     w.set_wh_enabled(s.work_hours_enabled);
@@ -195,6 +209,7 @@ fn read_settings(w: &SettingsWindow, base: &Settings) -> Settings {
         accent: from_idx(&ACCENTS, w.get_accent_idx(), "#4cc6c0"),
         reduce_motion: w.get_reduce_motion(),
         high_contrast: w.get_high_contrast(),
+        autostart: w.get_autostart(),
         idle_pause_enabled: w.get_idle_enabled(),
         idle_threshold_secs: w.get_idle_sec().max(10) as u64,
         work_hours_enabled: w.get_wh_enabled(),
@@ -265,6 +280,7 @@ fn main() -> Result<(), slint::PlatformError> {
         set_theme!(break_win, c, s.reduce_motion, s.high_contrast);
         set_theme!(settings_win, c, s.reduce_motion, s.high_contrast);
         set_theme!(widget_win, c, s.reduce_motion, s.high_contrast);
+        apply_autostart(s.autostart);
     }
 
     // Single source of truth → every window. One closure keeps them in sync.
@@ -516,6 +532,7 @@ fn main() -> Result<(), slint::PlatformError> {
                 wd.window()
                     .set_size(slint::LogicalSize::new(s.widget_width as f32, s.widget_height as f32));
             }
+            apply_autostart(s.autostart);
             w.set_long_hint(long_hint(&s).into());
             drop(s);
             let _ = w.hide();

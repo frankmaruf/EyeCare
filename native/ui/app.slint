@@ -264,6 +264,7 @@ export component SettingsWindow inherits Window {
     in-out property <int> accent-idx;
     in-out property <bool> reduce-motion;
     in-out property <bool> high-contrast;
+    in-out property <bool> autostart;
     in-out property <bool> idle-enabled;
     in-out property <int> idle-sec;
     in-out property <bool> wh-enabled;
@@ -600,6 +601,14 @@ export component SettingsWindow inherits Window {
                         value <=> root.widget-h;
                         minimum: 120;
                         maximum: 480;
+                    }
+                }
+
+                Card {
+                    title: "System";
+                    ToggleRow {
+                        label: "Launch at login";
+                        checked <=> root.autostart;
                     }
                 }
 
