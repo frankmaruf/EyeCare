@@ -258,6 +258,21 @@ fn read_settings(w: &MainWindow, base: &Settings) -> Settings {
 }
 
 fn main() -> Result<(), slint::PlatformError> {
+    // Set a stable Wayland app_id / X11 WM_CLASS so the compositor can match the
+    // installed .desktop and show the EyeCare icon (instead of a generic one).
+    #[cfg(target_os = "linux")]
+    {
+        use i_slint_backend_winit::winit::platform::wayland::WindowAttributesExtWayland;
+        if let Ok(backend) = i_slint_backend_winit::Backend::builder()
+            .with_window_attributes_hook(|attrs| {
+                attrs.with_name("us.frankmaruf.eyecare-native", "EyeCare")
+            })
+            .build()
+        {
+            let _ = slint::platform::set_platform(Box::new(backend));
+        }
+    }
+
     let settings = Rc::new(RefCell::new(Settings::load()));
     let timer = Rc::new(RefCell::new(Timer::new(&settings.borrow())));
     let stats = Rc::new(RefCell::new(Stats::load()));
@@ -526,7 +541,7 @@ fn main() -> Result<(), slint::PlatformError> {
             w.set_stat_today(today as i32);
             w.set_stat_total(total as i32);
             w.set_show_settings(true);
-            w.window().set_size(slint::LogicalSize::new(460.0, 640.0));
+            w.window().set_size(slint::LogicalSize::new(580.0, 680.0));
         });
     }
     {
@@ -668,9 +683,8 @@ fn main() -> Result<(), slint::PlatformError> {
         let widget_w = widget_win.as_weak();
         widget_win.on_start_drag(move || {
             if let Some(w) = widget_w.upgrade() {
-                w.window().with_winit_window(|win| {
-                    let _ = win.drag_window();
-                });
+                let r = w.window().with_winit_window(|win| win.drag_window());
+                eprintln!("[eyecare] drag_window -> {:?}", r);
             }
         });
     }
@@ -679,9 +693,10 @@ fn main() -> Result<(), slint::PlatformError> {
         widget_win.on_start_resize(move || {
             if let Some(w) = widget_w.upgrade() {
                 use i_slint_backend_winit::winit::window::ResizeDirection;
-                w.window().with_winit_window(|win| {
-                    let _ = win.drag_resize_window(ResizeDirection::SouthEast);
-                });
+                let r = w
+                    .window()
+                    .with_winit_window(|win| win.drag_resize_window(ResizeDirection::SouthEast));
+                eprintln!("[eyecare] drag_resize_window -> {:?}", r);
             }
         });
     }

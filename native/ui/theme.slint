@@ -196,6 +196,7 @@ export component ToggleRow {
 export component IconButton inherits Rectangle {
     in property <string> icon;
     in property <bool> primary: false;
+    out property <bool> hovered: t.has-hover;
     callback clicked();
     width: 26px;
     height: 26px;
