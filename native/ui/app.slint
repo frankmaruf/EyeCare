@@ -78,7 +78,20 @@ export component MainWindow inherits Window {
     callback export-settings();
     callback import-settings();
 
+    // live appearance preview while editing (before Save persists it)
+    changed accent-idx => {
+        Theme.accent = [#4cc6c0, #34d399, #5b8def, #e2725b, #a78bfa, #f59e0b][root.accent-idx];
+    }
+    changed reduce-motion => {
+        Theme.reduce-motion = root.reduce-motion;
+    }
+    changed high-contrast => {
+        Theme.high-contrast = root.high-contrast;
+    }
+
     if !root.show-settings : VerticalLayout {
+        width: 100%;
+        height: 100%;
         padding: 24px;
         spacing: 18px;
 
@@ -178,6 +191,8 @@ export component MainWindow inherits Window {
     }
 
     if root.show-settings : VerticalLayout {
+        width: 100%;
+        height: 100%;
         padding: 20px;
         spacing: 14px;
 
