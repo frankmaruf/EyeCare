@@ -151,7 +151,7 @@ fn parse_color(hex: &str) -> slint::Color {
     slint::Color::from_rgb_u8((n >> 16) as u8, (n >> 8) as u8, n as u8)
 }
 
-fn populate_settings(w: &SettingsWindow, s: &Settings) {
+fn populate_settings(w: &MainWindow, s: &Settings) {
     w.set_work_min((s.work_interval_secs / 60) as i32);
     w.set_break_sec(s.break_length_secs as i32);
     w.set_prewarn_sec(s.pre_break_warning_secs as i32);
@@ -204,7 +204,7 @@ fn populate_settings(w: &SettingsWindow, s: &Settings) {
     w.set_long_hint(long_hint(s).into());
 }
 
-fn read_settings(w: &SettingsWindow, base: &Settings) -> Settings {
+fn read_settings(w: &MainWindow, base: &Settings) -> Settings {
     Settings {
         work_interval_secs: w.get_work_min().max(1) as u64 * 60,
         break_length_secs: w.get_break_sec().max(5) as u64,
@@ -267,7 +267,6 @@ fn main() -> Result<(), slint::PlatformError> {
 
     let main_win = MainWindow::new()?;
     let break_win = BreakWindow::new()?;
-    let settings_win = SettingsWindow::new()?;
     let widget_win = WidgetWindow::new()?;
 
     // Push appearance settings onto a window's Theme global (each top-level
@@ -285,7 +284,6 @@ fn main() -> Result<(), slint::PlatformError> {
         let c = parse_color(&s.accent);
         set_theme!(main_win, c, s.reduce_motion, s.high_contrast);
         set_theme!(break_win, c, s.reduce_motion, s.high_contrast);
-        set_theme!(settings_win, c, s.reduce_motion, s.high_contrast);
         set_theme!(widget_win, c, s.reduce_motion, s.high_contrast);
         apply_autostart(s.autostart);
     }
@@ -514,52 +512,39 @@ fn main() -> Result<(), slint::PlatformError> {
     action!(widget_win.on_take_break, |t, s| t.take_break(&s));
     action!(widget_win.on_skip, |t, s| t.skip(&s));
 
-    // Settings: open (populate) / save (persist + apply) / back.
+    // Settings page (rendered inside the dashboard window) — open / save / back
+    // / export / import. Page-swap via `show-settings` (no separate window).
     {
-        let settings_w = settings_win.as_weak();
+        let mw = main_win.as_weak();
         let settings = settings.clone();
         let stats = stats.clone();
         main_win.on_open_settings(move || {
-            if let Some(w) = settings_w.upgrade() {
-                populate_settings(&w, &settings.borrow());
-                let (streak, today, total) = stats.borrow().summary();
-                w.set_stat_streak(streak as i32);
-                w.set_stat_today(today as i32);
-                w.set_stat_total(total as i32);
-                let _ = w.show();
-                // Force it above the dashboard: KDE's focus-stealing prevention
-                // otherwise leaves a freshly-shown sibling window behind the
-                // dashboard, so the gear looked like it did nothing.
-                w.window().with_winit_window(|win| {
-                    use i_slint_backend_winit::winit::window::WindowLevel;
-                    win.set_visible(true);
-                    win.set_window_level(WindowLevel::AlwaysOnTop);
-                    win.focus_window();
-                });
-            }
+            let Some(w) = mw.upgrade() else { return };
+            populate_settings(&w, &settings.borrow());
+            let (streak, today, total) = stats.borrow().summary();
+            w.set_stat_streak(streak as i32);
+            w.set_stat_today(today as i32);
+            w.set_stat_total(total as i32);
+            w.set_show_settings(true);
+            w.window().set_size(slint::LogicalSize::new(460.0, 640.0));
         });
     }
     {
-        let settings_w = settings_win.as_weak();
+        let mw = main_win.as_weak();
         let widget_w = widget_win.as_weak();
-        let main_w = main_win.as_weak();
         let break_w = break_win.as_weak();
         let settings = settings.clone();
         let timer = timer.clone();
         let render = render.clone();
-        settings_win.on_save(move || {
-            let Some(w) = settings_w.upgrade() else { return };
+        main_win.on_save(move || {
+            let Some(w) = mw.upgrade() else { return };
             let next = read_settings(&w, &settings.borrow());
             timer.borrow_mut().apply_settings(&next);
             next.save();
             *settings.borrow_mut() = next;
             let s = settings.borrow();
             let c = parse_color(&s.accent);
-            // live-apply appearance to every window, and the widget size
             set_theme!(w, c, s.reduce_motion, s.high_contrast);
-            if let Some(m) = main_w.upgrade() {
-                set_theme!(m, c, s.reduce_motion, s.high_contrast);
-            }
             if let Some(b) = break_w.upgrade() {
                 set_theme!(b, c, s.reduce_motion, s.high_contrast);
             }
@@ -571,24 +556,25 @@ fn main() -> Result<(), slint::PlatformError> {
             apply_autostart(s.autostart);
             w.set_long_hint(long_hint(&s).into());
             drop(s);
-            let _ = w.hide();
+            w.set_show_settings(false);
+            w.window().set_size(slint::LogicalSize::new(360.0, 440.0));
             render();
         });
     }
     {
-        let settings_w = settings_win.as_weak();
-        settings_win.on_back(move || {
-            if let Some(w) = settings_w.upgrade() {
-                let _ = w.hide();
+        let mw = main_win.as_weak();
+        main_win.on_back(move || {
+            if let Some(w) = mw.upgrade() {
+                w.set_show_settings(false);
+                w.window().set_size(slint::LogicalSize::new(360.0, 440.0));
             }
         });
     }
-    // export / import settings JSON via a native file dialog
     {
-        let settings_w = settings_win.as_weak();
+        let mw = main_win.as_weak();
         let settings = settings.clone();
-        settings_win.on_export_settings(move || {
-            let Some(w) = settings_w.upgrade() else { return };
+        main_win.on_export_settings(move || {
+            let Some(w) = mw.upgrade() else { return };
             if let Some(path) = rfd::FileDialog::new()
                 .add_filter("JSON", &["json"])
                 .set_file_name("eyecare-settings.json")
@@ -603,15 +589,14 @@ fn main() -> Result<(), slint::PlatformError> {
         });
     }
     {
-        let settings_w = settings_win.as_weak();
+        let mw = main_win.as_weak();
         let widget_w = widget_win.as_weak();
-        let main_w = main_win.as_weak();
         let break_w = break_win.as_weak();
         let settings = settings.clone();
         let timer = timer.clone();
         let render = render.clone();
-        settings_win.on_import_settings(move || {
-            let Some(w) = settings_w.upgrade() else { return };
+        main_win.on_import_settings(move || {
+            let Some(w) = mw.upgrade() else { return };
             let Some(path) = rfd::FileDialog::new().add_filter("JSON", &["json"]).pick_file() else {
                 return;
             };
@@ -628,9 +613,6 @@ fn main() -> Result<(), slint::PlatformError> {
             let s = settings.borrow();
             let c = parse_color(&s.accent);
             set_theme!(w, c, s.reduce_motion, s.high_contrast);
-            if let Some(m) = main_w.upgrade() {
-                set_theme!(m, c, s.reduce_motion, s.high_contrast);
-            }
             if let Some(b) = break_w.upgrade() {
                 set_theme!(b, c, s.reduce_motion, s.high_contrast);
             }

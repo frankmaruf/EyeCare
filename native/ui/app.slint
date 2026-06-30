@@ -21,8 +21,64 @@ export component MainWindow inherits Window {
     callback take-break();
     callback skip();
     callback open-settings();
+    in-out property <bool> show-settings;
+    in-out property <int> work-min;
+    in-out property <int> break-sec;
+    in-out property <int> prewarn-sec;
+    in-out property <int> escalation-idx;
+    in-out property <bool> sound-enabled;
+    in-out property <int> snooze-min;
+    in-out property <int> max-postpones;
+    in-out property <int> accent-idx;
+    in-out property <bool> reduce-motion;
+    in-out property <bool> high-contrast;
+    in-out property <bool> autostart;
+    in-out property <bool> idle-enabled;
+    in-out property <int> idle-sec;
+    in-out property <bool> wh-enabled;
+    in-out property <int> wh-start-h;
+    in-out property <int> wh-start-m;
+    in-out property <int> wh-end-h;
+    in-out property <int> wh-end-m;
+    in-out property <bool> wd-mon;
+    in-out property <bool> wd-tue;
+    in-out property <bool> wd-wed;
+    in-out property <bool> wd-thu;
+    in-out property <bool> wd-fri;
+    in-out property <bool> wd-sat;
+    in-out property <bool> wd-sun;
+    in-out property <bool> evening-enabled;
+    in-out property <int> evening-hour;
+    in-out property <bool> stats-enabled;
+    in property <int> stat-streak;
+    in property <int> stat-today;
+    in property <int> stat-total;
+    in-out property <bool> long-enabled;
+    in-out property <int> long-every;
+    in-out property <int> long-min;
+    in-out property <bool> tips-enabled;
+    in-out property <bool> exercises-enabled;
+    in-out property <bool> calm-enabled;
+    in-out property <bool> blink-enabled;
+    in-out property <int> blink-min;
+    in-out property <bool> hydration-enabled;
+    in-out property <int> hydration-min;
+    in-out property <bool> posture-enabled;
+    in-out property <int> posture-min;
+    in-out property <bool> eyedrops-enabled;
+    in-out property <int> eyedrops-min;
+    in-out property <int> widget-shape-idx;
+    in-out property <int> widget-opacity;
+    in-out property <int> widget-w;
+    in-out property <int> widget-h;
+    in property <string> long-hint;
+    in property <string> backup-msg;
+    callback save();
+    callback back();
+    callback export-settings();
+    callback import-settings();
 
-    VerticalLayout {
+    if !root.show-settings : VerticalLayout {
         padding: 24px;
         spacing: 18px;
 
@@ -120,197 +176,8 @@ export component MainWindow inherits Window {
             }
         }
     }
-}
 
-// Break overlay — mirrors renderBreak() in eyecare/src/main.ts.
-export component BreakWindow inherits Window {
-    title: "EyeCare — break time";
-    icon: @image-url("icon.png");
-    width: 580px;
-    height: 480px;
-    background: Theme.bg;
-
-    in property <string> time-text: "00:20";
-    in property <string> title-text: "Look ~20 feet away";
-    in property <string> sub-text: "Relax your eyes — let your focus drift to the distance.";
-    in property <string> tip-text;
-    in property <bool> can-postpone: true;
-    in property <bool> calm-on: true;
-    in property <bool> exercise-on: false;
-    in property <bool> is-long: false;
-    callback postpone();
-    callback skip();
-
-    // calming drifting colour blobs behind the content
-    if root.calm-on: Rectangle {
-        width: 100%;
-        height: 100%;
-        Rectangle {
-            width: 340px;
-            height: 340px;
-            border-radius: 170px;
-            background: #2bd0c826;
-            x: -70px;
-            y: -90px;
-        }
-
-        Rectangle {
-            width: 300px;
-            height: 300px;
-            border-radius: 150px;
-            background: #4a7bd026;
-            x: parent.width - 230px;
-            y: parent.height - 210px;
-        }
-    }
-
-    VerticalLayout {
-        padding: 24px;
-        spacing: 8px;
-        alignment: center;
-
-        Text {
-            text: "EYECARE";
-            color: Theme.accent;
-            font-size: 13px;
-            letter-spacing: 3px;
-            font-weight: 600;
-            horizontal-alignment: center;
-        }
-
-        Text {
-            text: root.title-text;
-            color: Theme.text;
-            font-size: 36px;
-            font-weight: 600;
-            horizontal-alignment: center;
-            wrap: word-wrap;
-        }
-
-        Text {
-            text: root.sub-text;
-            color: Theme.muted;
-            font-size: 16px;
-            horizontal-alignment: center;
-            wrap: word-wrap;
-        }
-
-        // guided eye-exercise: follow the dot (long breaks only)
-        if root.exercise-on && root.is-long: Rectangle {
-            height: 64px;
-            Rectangle {
-                width: 16px;
-                height: 16px;
-                border-radius: 8px;
-                background: Theme.accent;
-                y: parent.height / 2 - 8px;
-                x: parent.width / 2 - 8px + 120px * Math.sin((animation-tick() / 1s) * 90deg);
-            }
-        }
-
-        Text {
-            text: root.time-text;
-            color: Theme.accent;
-            font-size: 64px;
-            font-weight: 700;
-            horizontal-alignment: center;
-        }
-
-        HorizontalLayout {
-            alignment: center;
-            spacing: 12px;
-            PillButton {
-                text: "Postpone";
-                ghost: true;
-                clicked => {
-                    root.postpone();
-                }
-            }
-
-            PillButton {
-                text: "Skip break";
-                clicked => {
-                    root.skip();
-                }
-            }
-        }
-
-        Text {
-            text: root.tip-text;
-            color: Theme.muted;
-            font-size: 14px;
-            horizontal-alignment: center;
-            wrap: word-wrap;
-        }
-    }
-}
-
-// Settings — mirrors showSettings() in eyecare/src/main.ts (core cards now;
-// nudges / theme / stats / import-export land in later increments).
-export component SettingsWindow inherits Window {
-    title: "EyeCare — Settings";
-    icon: @image-url("icon.png");
-    width: 440px;
-    height: 600px;
-    background: Theme.bg;
-
-    in-out property <int> work-min;
-    in-out property <int> break-sec;
-    in-out property <int> prewarn-sec;
-    in-out property <int> escalation-idx;
-    in-out property <bool> sound-enabled;
-    in-out property <int> snooze-min;
-    in-out property <int> max-postpones;
-    in-out property <int> accent-idx;
-    in-out property <bool> reduce-motion;
-    in-out property <bool> high-contrast;
-    in-out property <bool> autostart;
-    in-out property <bool> idle-enabled;
-    in-out property <int> idle-sec;
-    in-out property <bool> wh-enabled;
-    in-out property <int> wh-start-h;
-    in-out property <int> wh-start-m;
-    in-out property <int> wh-end-h;
-    in-out property <int> wh-end-m;
-    in-out property <bool> wd-mon;
-    in-out property <bool> wd-tue;
-    in-out property <bool> wd-wed;
-    in-out property <bool> wd-thu;
-    in-out property <bool> wd-fri;
-    in-out property <bool> wd-sat;
-    in-out property <bool> wd-sun;
-    in-out property <bool> evening-enabled;
-    in-out property <int> evening-hour;
-    in-out property <bool> stats-enabled;
-    in property <int> stat-streak;
-    in property <int> stat-today;
-    in property <int> stat-total;
-    in-out property <bool> long-enabled;
-    in-out property <int> long-every;
-    in-out property <int> long-min;
-    in-out property <bool> tips-enabled;
-    in-out property <bool> exercises-enabled;
-    in-out property <bool> calm-enabled;
-    in-out property <bool> blink-enabled;
-    in-out property <int> blink-min;
-    in-out property <bool> hydration-enabled;
-    in-out property <int> hydration-min;
-    in-out property <bool> posture-enabled;
-    in-out property <int> posture-min;
-    in-out property <bool> eyedrops-enabled;
-    in-out property <int> eyedrops-min;
-    in-out property <int> widget-shape-idx;
-    in-out property <int> widget-opacity;
-    in-out property <int> widget-w;
-    in-out property <int> widget-h;
-    in property <string> long-hint;
-    in property <string> backup-msg;
-    callback save();
-    callback back();
-    callback export-settings();
-    callback import-settings();
-
-    VerticalLayout {
+    if root.show-settings : VerticalLayout {
         padding: 20px;
         spacing: 14px;
 
@@ -789,6 +656,132 @@ export component SettingsWindow inherits Window {
         }
     }
 }
+
+// Break overlay — mirrors renderBreak() in eyecare/src/main.ts.
+export component BreakWindow inherits Window {
+    title: "EyeCare — break time";
+    icon: @image-url("icon.png");
+    width: 580px;
+    height: 480px;
+    background: Theme.bg;
+
+    in property <string> time-text: "00:20";
+    in property <string> title-text: "Look ~20 feet away";
+    in property <string> sub-text: "Relax your eyes — let your focus drift to the distance.";
+    in property <string> tip-text;
+    in property <bool> can-postpone: true;
+    in property <bool> calm-on: true;
+    in property <bool> exercise-on: false;
+    in property <bool> is-long: false;
+    callback postpone();
+    callback skip();
+
+    // calming drifting colour blobs behind the content
+    if root.calm-on: Rectangle {
+        width: 100%;
+        height: 100%;
+        Rectangle {
+            width: 340px;
+            height: 340px;
+            border-radius: 170px;
+            background: #2bd0c826;
+            x: -70px;
+            y: -90px;
+        }
+
+        Rectangle {
+            width: 300px;
+            height: 300px;
+            border-radius: 150px;
+            background: #4a7bd026;
+            x: parent.width - 230px;
+            y: parent.height - 210px;
+        }
+    }
+
+    VerticalLayout {
+        padding: 24px;
+        spacing: 8px;
+        alignment: center;
+
+        Text {
+            text: "EYECARE";
+            color: Theme.accent;
+            font-size: 13px;
+            letter-spacing: 3px;
+            font-weight: 600;
+            horizontal-alignment: center;
+        }
+
+        Text {
+            text: root.title-text;
+            color: Theme.text;
+            font-size: 36px;
+            font-weight: 600;
+            horizontal-alignment: center;
+            wrap: word-wrap;
+        }
+
+        Text {
+            text: root.sub-text;
+            color: Theme.muted;
+            font-size: 16px;
+            horizontal-alignment: center;
+            wrap: word-wrap;
+        }
+
+        // guided eye-exercise: follow the dot (long breaks only)
+        if root.exercise-on && root.is-long: Rectangle {
+            height: 64px;
+            Rectangle {
+                width: 16px;
+                height: 16px;
+                border-radius: 8px;
+                background: Theme.accent;
+                y: parent.height / 2 - 8px;
+                x: parent.width / 2 - 8px + 120px * Math.sin((animation-tick() / 1s) * 90deg);
+            }
+        }
+
+        Text {
+            text: root.time-text;
+            color: Theme.accent;
+            font-size: 64px;
+            font-weight: 700;
+            horizontal-alignment: center;
+        }
+
+        HorizontalLayout {
+            alignment: center;
+            spacing: 12px;
+            PillButton {
+                text: "Postpone";
+                ghost: true;
+                clicked => {
+                    root.postpone();
+                }
+            }
+
+            PillButton {
+                text: "Skip break";
+                clicked => {
+                    root.skip();
+                }
+            }
+        }
+
+        Text {
+            text: root.tip-text;
+            color: Theme.muted;
+            font-size: 14px;
+            horizontal-alignment: center;
+            wrap: word-wrap;
+        }
+    }
+}
+
+// Settings — mirrors showSettings() in eyecare/src/main.ts (core cards now;
+// nudges / theme / stats / import-export land in later increments).
 
 // Floating widget — mirrors renderWidget(): small always-on-top countdown ring.
 export component WidgetWindow inherits Window {
