@@ -1,0 +1,53 @@
+name: native-release
+
+# Native (Rust + Slint) low-RAM build. Triggered by `native-v*` tags, published
+# as a PRERELEASE so it never becomes the repo's "latest" and never disturbs the
+# Tauri build's latest.json auto-updater. The in-app native updater finds it by
+# scanning for `native-v*` tags + an `eyecare-native*` asset.
+on:
+  push:
+    tags:
+      - 'native-v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build deps (winit / femtovg)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libfontconfig1-dev libxcb1-dev libxkbcommon-dev \
+            libwayland-dev libxkbcommon-x11-dev
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Build release
+        working-directory: native
+        run: cargo build --release
+
+      - name: Stage asset
+        run: |
+          mkdir -p dist
+          cp native/target/release/eyecare-native dist/eyecare-native-linux-x86_64
+          chmod +x dist/eyecare-native-linux-x86_64
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          prerelease: true
+          name: EyeCare native ${{ github.ref_name }}
+          files: dist/eyecare-native-linux-x86_64
+          body: |
+            **EyeCare — native (Rust + Slint) low-RAM build.** Linux x86_64.
+
+            ~44 MB RAM vs the Tauri build's ~600 MB. Same 20-20-20 break
+            reminder, widget, settings, and eye-health features.
+
+            Auto-updates via the in-app updater (Settings → Updates). This is a
+            prerelease and does **not** affect the main Tauri app or its updater.

@@ -1,12 +1,15 @@
 // Native updater: checks GitHub Releases for a newer native build and (if a
 // native asset is published) downloads it and swaps the running binary.
 //
-// Native releases are identified by an asset whose name contains
-// "eyecare-native" (e.g. eyecare-native-linux-x86_64), so this never confuses
-// itself with the Tauri build's installers in the same repo.
+// Native builds ship under their OWN release tags `native-vX.Y.Z` (published as
+// prereleases) so they never become the repo's "latest" and never disturb the
+// Tauri build's `latest.json` auto-updater. We list all releases, keep the ones
+// whose tag starts with `native-v`, and take the newest. The binary itself is an
+// asset whose name contains "eyecare-native" (e.g. eyecare-native-linux-x86_64).
 
 const REPO: &str = "frankmaruf/EyeCare";
 const ASSET_MARKER: &str = "eyecare-native";
+const TAG_PREFIX: &str = "native-v";
 
 pub fn current_version() -> &'static str {
     env!("CARGO_PKG_VERSION")
@@ -32,34 +35,41 @@ fn newer(a: &str, b: &str) -> bool {
     false
 }
 
-/// Query the latest GitHub release. Blocking — call off the UI thread.
+/// Find the newest `native-v*` release. Blocking — call off the UI thread.
 pub fn check() -> Result<Latest, String> {
-    let url = format!("https://api.github.com/repos/{REPO}/releases/latest");
+    let url = format!("https://api.github.com/repos/{REPO}/releases?per_page=50");
     let resp = ureq::get(&url)
         .set("User-Agent", "EyeCare-native")
         .set("Accept", "application/vnd.github+json")
         .call()
         .map_err(|e| e.to_string())?;
-    let json: serde_json::Value = resp.into_json().map_err(|e| e.to_string())?;
+    let releases: serde_json::Value = resp.into_json().map_err(|e| e.to_string())?;
 
-    let version = json["tag_name"]
-        .as_str()
-        .unwrap_or("")
-        .trim_start_matches('v')
-        .to_string();
-    let asset_url = json["assets"].as_array().and_then(|assets| {
-        assets
-            .iter()
-            .find(|a| {
-                a["name"]
-                    .as_str()
-                    .map(|n| n.contains(ASSET_MARKER))
-                    .unwrap_or(false)
-            })
-            .and_then(|a| a["browser_download_url"].as_str())
-            .map(String::from)
-    });
-    Ok(Latest { version, asset_url })
+    let mut best: Option<Latest> = None;
+    for rel in releases.as_array().into_iter().flatten() {
+        let tag = rel["tag_name"].as_str().unwrap_or("");
+        let Some(version) = tag.strip_prefix(TAG_PREFIX) else {
+            continue;
+        };
+        let asset_url = rel["assets"].as_array().and_then(|assets| {
+            assets
+                .iter()
+                .find(|a| a["name"].as_str().map(|n| n.contains(ASSET_MARKER)).unwrap_or(false))
+                .and_then(|a| a["browser_download_url"].as_str())
+                .map(String::from)
+        });
+        let is_better = best.as_ref().map(|b| newer(version, &b.version)).unwrap_or(true);
+        if is_better {
+            best = Some(Latest {
+                version: version.to_string(),
+                asset_url,
+            });
+        }
+    }
+    Ok(best.unwrap_or(Latest {
+        version: String::new(),
+        asset_url: None,
+    }))
 }
 
 /// Evaluate the latest release → (status text, downloadable asset, has-update).
