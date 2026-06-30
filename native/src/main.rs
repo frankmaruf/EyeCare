@@ -610,11 +610,25 @@ fn main() -> Result<(), slint::PlatformError> {
     apply_chrome();
     // keep the widget out of the taskbar — it lives in the tray (X11)
     #[cfg(target_os = "linux")]
-    widget_win.window().with_winit_window(|win| {
-        if let Some(xid) = x11_window_id(win) {
-            platform::x11_skip_taskbar(xid);
-        }
-    });
+    {
+        widget_win.window().with_winit_window(|win| {
+            if let Some(xid) = x11_window_id(win) {
+                platform::x11_skip_taskbar(xid);
+            }
+        });
+        // re-apply once the window is surely mapped (the WM ignores state changes
+        // sent before map)
+        let ww = widget_win.as_weak();
+        slint::Timer::single_shot(Duration::from_millis(700), move || {
+            if let Some(wd) = ww.upgrade() {
+                wd.window().with_winit_window(|win| {
+                    if let Some(xid) = x11_window_id(win) {
+                        platform::x11_skip_taskbar(xid);
+                    }
+                });
+            }
+        });
+    }
 
     // 1-second tick.
     let ticker = slint::Timer::default();

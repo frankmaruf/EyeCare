@@ -39,12 +39,18 @@ pub fn another_app_fullscreen() -> bool {
 
 /// Tell the WM to keep this X11 window out of the taskbar + pager (so the widget
 /// lives only in the tray, not the task switcher). `xid` is the Xlib window.
+///
+/// Sets it two ways so it sticks whether or not the window is mapped yet:
+/// appends the atoms to the `_NET_WM_STATE` property (read by the WM at map time,
+/// Append so it doesn't clobber `_NET_WM_STATE_ABOVE`) AND sends the live
+/// ClientMessage (honored once mapped).
 #[cfg(target_os = "linux")]
 pub fn x11_skip_taskbar(xid: u32) {
     use x11rb::connection::Connection;
     use x11rb::protocol::xproto::{
-        ClientMessageEvent, ConnectionExt, EventMask, CLIENT_MESSAGE_EVENT,
+        AtomEnum, ClientMessageEvent, ConnectionExt, EventMask, PropMode, CLIENT_MESSAGE_EVENT,
     };
+    use x11rb::wrapper::ConnectionExt as _; // change_property32
     let _ = (|| -> Option<()> {
         let (conn, screen) = x11rb::connect(None).ok()?;
         let root = conn.setup().roots[screen].root;
@@ -53,15 +59,24 @@ pub fn x11_skip_taskbar(xid: u32) {
             .intern_atom(false, b"_NET_WM_STATE_SKIP_TASKBAR").ok()?.reply().ok()?.atom;
         let skip_pg = conn
             .intern_atom(false, b"_NET_WM_STATE_SKIP_PAGER").ok()?.reply().ok()?.atom;
+        // (a) append to the property (pre-map case)
+        conn.change_property32(
+            PropMode::APPEND,
+            xid,
+            wm_state,
+            AtomEnum::ATOM,
+            &[skip_tb, skip_pg],
+        )
+        .ok()?;
+        // (b) live ClientMessage (already-mapped case)
         for atom in [skip_tb, skip_pg] {
-            // data: [_NET_WM_STATE_ADD=1, atom, 0, source=1 (app), 0]
             let ev = ClientMessageEvent {
                 response_type: CLIENT_MESSAGE_EVENT,
                 format: 32,
                 sequence: 0,
                 window: xid,
                 type_: wm_state,
-                data: [1, atom, 0, 1, 0].into(),
+                data: [1, atom, 0, 1, 0].into(), // _NET_WM_STATE_ADD, source=app
             };
             conn.send_event(
                 false,
