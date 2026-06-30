@@ -943,7 +943,8 @@ export component WidgetWindow inherits Window {
                 viewbox-width: 100;
                 viewbox-height: 100;
                 stroke: Theme.accent;
-                stroke-width: parent.d * 0.087;
+                // stroke-width is in viewbox units → auto-scales with the dial
+                stroke-width: 9px;
                 MoveTo {
                     x: 50;
                     y: 6;
