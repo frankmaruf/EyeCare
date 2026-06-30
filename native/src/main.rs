@@ -836,23 +836,20 @@ fn main() -> Result<(), slint::PlatformError> {
             if lw < 1 || lh < 1 {
                 return;
             }
-            // Keep the widget square so the round dial always fills it — resizing
-            // either edge scales the whole thing uniformly.
+            // Keep the widget square so the round dial always fills it. Snap
+            // whenever the live window isn't square (resizing one edge), then
+            // persist.
             let sq = lw.min(lh).clamp(settings::WIDGET_MIN, settings::WIDGET_MAX);
-            let changed = {
-                let mut s = settings.borrow_mut();
-                let c = s.widget_width != sq || s.widget_x != Some(lx) || s.widget_y != Some(ly);
-                if c {
-                    s.widget_width = sq;
-                    s.widget_height = sq;
-                    s.widget_x = Some(lx);
-                    s.widget_y = Some(ly);
-                    s.save();
-                }
-                c
-            };
-            if changed && (lw != sq || lh != sq) {
+            if lw != lh || lw != sq {
                 win.set_size(slint::LogicalSize::new(sq as f32, sq as f32));
+            }
+            let mut s = settings.borrow_mut();
+            if s.widget_width != sq || s.widget_x != Some(lx) || s.widget_y != Some(ly) {
+                s.widget_width = sq;
+                s.widget_height = sq;
+                s.widget_x = Some(lx);
+                s.widget_y = Some(ly);
+                s.save();
             }
         });
     }

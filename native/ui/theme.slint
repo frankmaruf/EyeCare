@@ -198,9 +198,9 @@ export component IconButton inherits Rectangle {
     in property <bool> primary: false;
     out property <bool> hovered: t.has-hover;
     callback clicked();
-    width: 26px;
-    height: 26px;
-    border-radius: 13px;
+    width: 22px;
+    height: 22px;
+    border-radius: 11px;
     background: root.primary
         ? (t.pressed ? Theme.accent.darker(15%) : Theme.accent)
         : (t.has-hover ? #2a3a59 : #1c2a45);
