@@ -780,6 +780,7 @@ fn main() -> Result<(), slint::PlatformError> {
         widget_win.window().with_winit_window(|win| {
             use i_slint_backend_winit::winit::dpi::LogicalSize;
             use i_slint_backend_winit::winit::window::WindowLevel;
+            win.set_resizable(true);
             win.set_window_level(WindowLevel::AlwaysOnTop);
             win.set_min_inner_size(Some(LogicalSize::new(
                 settings::WIDGET_MIN as f64,
