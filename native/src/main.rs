@@ -527,10 +527,13 @@ fn main() -> Result<(), slint::PlatformError> {
                 w.set_stat_today(today as i32);
                 w.set_stat_total(total as i32);
                 let _ = w.show();
-                // bring it to the front + focus (a hidden window can otherwise
-                // re-appear behind the dashboard, looking like nothing happened)
+                // Force it above the dashboard: KDE's focus-stealing prevention
+                // otherwise leaves a freshly-shown sibling window behind the
+                // dashboard, so the gear looked like it did nothing.
                 w.window().with_winit_window(|win| {
+                    use i_slint_backend_winit::winit::window::WindowLevel;
                     win.set_visible(true);
+                    win.set_window_level(WindowLevel::AlwaysOnTop);
                     win.focus_window();
                 });
             }
