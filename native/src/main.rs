@@ -1216,7 +1216,7 @@ fn main() -> Result<(), slint::PlatformError> {
                 // skip-taskbar while mapping → re-add it whenever it's missing so
                 // the dashboard never lingers in the taskbar (incl. on reopen).
                 #[cfg(target_os = "linux")]
-                if warmup > 20 && warmup % 3 == 0 {
+                if warmup > 20 {
                     if let Some(m) = main_w.upgrade() {
                         if m.window().is_visible() {
                             if let Some(xid) =
@@ -1224,8 +1224,10 @@ fn main() -> Result<(), slint::PlatformError> {
                             {
                                 if let Some((hidden, has_skip)) = platform::x11_window_flags(xid) {
                                     if hidden && !prev_min {
-                                        m.window()
-                                            .with_winit_window(|w| w.set_minimized(false));
+                                        // hide straight to the tray — do NOT
+                                        // un-minimize first (that re-maps the
+                                        // window for a frame = the blink). It's
+                                        // un-minimized later in raise_main on show.
                                         let _ = m.hide();
                                     } else if !hidden && !has_skip {
                                         platform::x11_skip_taskbar_msg(xid);
