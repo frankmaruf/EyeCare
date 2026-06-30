@@ -11,6 +11,18 @@ const REPO: &str = "frankmaruf/EyeCare";
 const ASSET_MARKER: &str = "eyecare-native";
 const TAG_PREFIX: &str = "native-v";
 
+/// Substring an asset must contain to match the running OS, so a multi-platform
+/// release picks the right binary (e.g. eyecare-native-linux-x86_64).
+fn platform_marker() -> &'static str {
+    if cfg!(target_os = "windows") {
+        "windows"
+    } else if cfg!(target_os = "macos") {
+        "macos"
+    } else {
+        "linux"
+    }
+}
+
 pub fn current_version() -> &'static str {
     env!("CARGO_PKG_VERSION")
 }
@@ -54,7 +66,12 @@ pub fn check() -> Result<Latest, String> {
         let asset_url = rel["assets"].as_array().and_then(|assets| {
             assets
                 .iter()
-                .find(|a| a["name"].as_str().map(|n| n.contains(ASSET_MARKER)).unwrap_or(false))
+                .find(|a| {
+                    a["name"]
+                        .as_str()
+                        .map(|n| n.contains(ASSET_MARKER) && n.contains(platform_marker()))
+                        .unwrap_or(false)
+                })
                 .and_then(|a| a["browser_download_url"].as_str())
                 .map(String::from)
         });
@@ -112,8 +129,15 @@ pub fn install(asset_url: &str) -> Result<std::path::PathBuf, String> {
         use std::os::unix::fs::PermissionsExt;
         let _ = std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o755));
     }
-    // Replacing a running binary is allowed on Linux (the old inode lives until
-    // exit); the next launch uses the new file.
+    // On Unix the running inode lives until exit, so we can rename over it. On
+    // Windows the running .exe is locked against overwrite but CAN be renamed
+    // aside, so move the old one out of the way first.
+    #[cfg(windows)]
+    {
+        let old = exe.with_extension("old");
+        let _ = std::fs::remove_file(&old);
+        std::fs::rename(&exe, &old).map_err(|e| format!("replace failed: {e}"))?;
+    }
     std::fs::rename(&tmp, &exe).map_err(|e| format!("replace failed (need write access?): {e}"))?;
     Ok(exe)
 }
