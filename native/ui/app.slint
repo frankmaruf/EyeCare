@@ -625,7 +625,7 @@ export component MainWindow inherits Window {
                         label: "Width";
                         unit: "px";
                         value <=> root.widget-w;
-                        minimum: 80;
+                        minimum: 56;
                         maximum: 480;
                     }
 
@@ -633,7 +633,7 @@ export component MainWindow inherits Window {
                         label: "Height";
                         unit: "px";
                         value <=> root.widget-h;
-                        minimum: 80;
+                        minimum: 56;
                         maximum: 480;
                     }
 
@@ -1068,8 +1068,8 @@ export component WidgetWindow inherits Window {
     icon: @image-url("icon.png");
     // resizable range (not a fixed width/height — that would lock WM_NORMAL_HINTS
     // so the window manager refuses to resize it)
-    min-width: 80px;
-    min-height: 80px;
+    min-width: 56px;
+    min-height: 56px;
     max-width: 480px;
     max-height: 480px;
     preferred-width: 132px;
@@ -1211,7 +1211,7 @@ export component WidgetWindow inherits Window {
         // ---- ring with tick marks ----
         ringbox := Rectangle {
             // dial scales with the widget (kept circular = smaller side)
-            property <length> d: min(parent.width, parent.height) - 24px;
+            property <length> d: min(parent.width, parent.height) * 0.86;
             width: self.d;
             height: self.d;
             x: (parent.width - self.width) / 2;

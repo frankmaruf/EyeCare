@@ -143,7 +143,7 @@ impl Default for Settings {
 }
 
 /// Clamp the widget to a sane size range (mirrors the Tauri 120–480 clamp).
-pub const WIDGET_MIN: u32 = 80;
+pub const WIDGET_MIN: u32 = 56;
 pub const WIDGET_MAX: u32 = 480;
 
 impl Settings {
