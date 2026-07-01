@@ -453,8 +453,10 @@ fn main() -> Result<(), slint::PlatformError> {
 
     // Renderer choice (applied at launch): low-RAM mode uses the CPU software
     // renderer (~20 MB, solid widget); otherwise femtovg GPU (~56 MB, transparent
-    // widget). Read it before the backend is built.
-    let low_ram = Settings::load().low_ram;
+    // widget). Read it before the backend is built; the same load seeds the
+    // settings state below (one disk read, not two).
+    let boot_settings = Settings::load();
+    let low_ram = boot_settings.low_ram;
     #[cfg(not(target_os = "linux"))]
     std::env::set_var(
         "SLINT_BACKEND",
@@ -477,7 +479,7 @@ fn main() -> Result<(), slint::PlatformError> {
         }
     }
 
-    let settings = Rc::new(RefCell::new(Settings::load()));
+    let settings = Rc::new(RefCell::new(boot_settings));
     let timer = Rc::new(RefCell::new(Timer::new(&settings.borrow())));
     let stats = Rc::new(RefCell::new(Stats::load()));
     // 0 = running, 1 = idle-paused, 2 = outside work hours
@@ -1122,22 +1124,12 @@ fn main() -> Result<(), slint::PlatformError> {
             }
             let tx = upd_tx.clone();
             std::thread::spawn(move || match updater::install(&url) {
-                Ok(exe) => {
+                Ok(_exe) => {
                     let _ = tx.send(("Installed — restarting…".into(), None, false));
                     std::thread::sleep(std::time::Duration::from_millis(300));
-                    // Relaunch with --show so the dashboard comes back up, and
-                    // delay the launch so this (old) process — and its
-                    // single-instance lock — is gone before the new one checks it.
-                    #[cfg(target_os = "linux")]
-                    {
-                        let cmd = format!("sleep 1; exec \"{}\" --show", exe.to_string_lossy());
-                        let _ = std::process::Command::new("sh").arg("-c").arg(cmd).spawn();
-                    }
-                    #[cfg(not(target_os = "linux"))]
-                    {
-                        let _ = std::process::Command::new(&exe).arg("--show").spawn();
-                    }
-                    std::process::exit(0);
+                    // install() replaced our own binary, so restart_self() (which
+                    // re-execs current_exe with --show) launches the new version.
+                    restart_self();
                 }
                 Err(e) => {
                     let _ = tx.send((format!("Install failed: {e}"), None, false));
