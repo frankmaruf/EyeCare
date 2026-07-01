@@ -364,14 +364,18 @@ fn raise_main(m: &MainWindow) {
 /// the dashboard back.
 fn restart_self() -> ! {
     if let Ok(exe) = std::env::current_exe() {
+        // After the updater replaces our own binary, /proc/self/exe reads
+        // "<path> (deleted)" — strip it so we relaunch the fresh on-disk file
+        // (with it, sh exec'd a nonexistent path and the app never came back).
+        let path = exe.to_string_lossy().replace(" (deleted)", "");
         #[cfg(target_os = "linux")]
         {
-            let cmd = format!("sleep 1; exec \"{}\" --show", exe.to_string_lossy());
+            let cmd = format!("sleep 1; exec \"{path}\" --show");
             let _ = std::process::Command::new("sh").arg("-c").arg(cmd).spawn();
         }
         #[cfg(not(target_os = "linux"))]
         {
-            let _ = std::process::Command::new(&exe).arg("--show").spawn();
+            let _ = std::process::Command::new(&path).arg("--show").spawn();
         }
     }
     std::process::exit(0);
